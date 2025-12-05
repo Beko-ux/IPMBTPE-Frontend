@@ -449,7 +449,7 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Fiche de notes - ${group.academicYear || ''} - ${getSpecialiteDisplay(group)}</title>
+  <title>Fiche de report de notes - ${group.academicYear || ''} - ${getSpecialiteDisplay(group)}</title>
   <style>
     @page {
       size: A4;
@@ -533,6 +533,8 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
       border-collapse: collapse;
       margin-top: 10px;
       font-size: 12px;
+      margin-left: auto;
+      margin-right: auto;
     }
     th, td {
       border: 1px solid #000;
@@ -551,12 +553,12 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
       width: 30px;
     }
     .th-matricule {
-      width: 90px;
+      width: 87px; /* RÉDUIT DE 3px (de 90px à 87px) */
     }
     .th-name {
       text-align: left;
       padding-left: 6px;
-      width: 185px;
+      width: 182px; /* RÉDUIT DE 3px (de 185px à 182px) */
     }
     .th-note {
       width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
@@ -621,7 +623,7 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
       </div>
     </div>
 
-    <div class="center-title">FICHE DE NOTES</div>
+    <div class="center-title">FICHE DE REPORT DE NOTES</div>
 
     <table>
       <thead>
@@ -719,7 +721,7 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentative
         </div>
       </div>
 
-      <div class="center-title">FICHE DE NOTES</div>
+      <div class="center-title">FICHE DE REPORT DE NOTES</div>
 
       <table>
         <thead>
@@ -855,6 +857,8 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentative
       border-collapse: collapse;
       margin-top: 10px;
       font-size: 12px;
+      margin-left: auto;
+      margin-right: auto;
     }
     th, td {
       border: 1px solid #000;
@@ -873,12 +877,12 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentative
       width: 30px;
     }
     .th-matricule {
-      width: 90px;
+      width: 87px; /* RÉDUIT DE 3px (de 90px à 87px) */
     }
     .th-name {
       text-align: left;
       padding-left: 6px;
-      width: 185px;
+      width: 182px; /* RÉDUIT DE 3px (de 185px à 182px) */
     }
     .th-note {
       width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
@@ -1131,6 +1135,8 @@ const sheetStyles = {
     borderCollapse: "collapse",
     marginTop: 8,
     fontSize: "0.8rem",
+    marginLeft: "auto",
+    marginRight: "auto",
   },
   thN: {
     border: "1px solid #000",
@@ -1141,14 +1147,14 @@ const sheetStyles = {
   thMatricule: {
     border: "1px solid #000",
     padding: "4px 4px",
-    width: "80px",
+    width: "77px", /* RÉDUIT DE 3px (de 80px à 77px) */
     textAlign: "center",
   },
   thName: {
     border: "1px solid #000",
     padding: "4px 4px",
     textAlign: "left",
-    width: "185px",
+    width: "182px", /* RÉDUIT DE 3px (de 185px à 182px) */
   },
   thNote: {
     border: "1px solid #000",
