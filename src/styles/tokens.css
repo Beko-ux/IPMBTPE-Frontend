@@ -1,0 +1,119 @@
+/* src/styles/tokens.css */
+
+/* ====== Font (Montserrat) ====== */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* ===== Brand (mode clair) ===== */
+  /* brand */
+  --ip-teal:   #30b2a5;
+  --ip-orange: #ff8200;
+  --ip-gray:   #848689;
+
+  /* backgrounds */
+  --bg:            #ffffff;
+  --bg-muted:      #f5f5f5;
+  --bg-input:      #f3f3f5;
+  --bg-sidebar-hi: #f0fffe;
+
+  /* text */
+  --fg:            oklch(0.145 0 0); /* noir profond (~#252525) */
+  --on-color:      #ffffff;
+
+  /* borders & states */
+  --border:        rgba(0,0,0,0.1);
+  --switch-bg:     #cbced4;
+  --danger:        #d4183d;
+
+  /* charts (clair) */
+  --chart-1: #30b2a5;
+  --chart-2: #ff8200;
+  --chart-3: #848689;
+  --chart-4: #22c55e;
+  --chart-5: #8b5cf6;
+
+  /* radius / shadows (petits tokens utiles) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-md: 0 2px 8px rgba(0,0,0,.08);
+}
+
+/* ===== Mode sombre (OKLCH) ===== */
+:root[data-theme="dark"] {
+  --bg:            oklch(0.145 0 0);
+  --fg:            oklch(0.985 0 0);
+  --on-color:      oklch(0.985 0 0);
+
+  /* si tu veux inverser la primaire en dark, tu peux remplacer ip-teal par du blanc, mais on garde teal par défaut */
+  /* --ip-teal: oklch(0.985 0 0); */
+
+  --ip-orange:     oklch(0.645 0.246 16.439);
+  --ip-gray:       oklch(0.439 0 0);
+  --border:        oklch(0.269 0 0);
+  --bg-muted:      oklch(0.205 0 0);
+  --bg-input:      oklch(0.269 0 0);
+
+  --danger:        oklch(0.396 0.141 25.723);
+
+  /* charts (sombre) */
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+}
+
+/* ===== Base styles ===== */
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+button, input, select, textarea { font-family: inherit; color: inherit; }
+img { max-width: 100%; display: block; }
+
+/* ===== Helpers / Utilities ===== */
+.ip-btn-primary {
+  background: var(--ip-teal);
+  color: var(--on-color);
+  border: 1px solid var(--ip-teal);
+  border-radius: var(--radius-md);
+  padding: .55rem .9rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+}
+.ip-btn-primary:hover { filter: brightness(0.96); }
+
+.ip-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.ip-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  height: 42px;
+  padding: 0 .75rem;
+}
+
+.ip-text-muted { color: var(--ip-gray); }
+.ip-divider { height:1px; background: var(--border); border:0; }
+
+/* Scrollbar (optionnel, discret) */
+:root ::-webkit-scrollbar { height: 10px; width: 10px; }
+:root ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+:root ::-webkit-scrollbar-track { background: transparent; }
