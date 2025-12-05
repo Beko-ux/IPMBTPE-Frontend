@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Download, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -95,22 +95,18 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   // Fonction simplifiée pour afficher la spécialité
   const getSpecialiteDisplay = (group) => {
-    // Utiliser le displayName envoyé par le backend
     if (group.displayName && group.displayName.trim() !== "") {
       return capitalizeFirst(group.displayName);
     }
     
-    // Fallback 1: utiliser l'option
     if (group.option && group.option.trim() !== "") {
       return capitalizeFirst(group.option);
     }
     
-    // Fallback 2: utiliser la spécialité
     if (group.specialite && group.specialite.trim() !== "") {
       return capitalizeFirst(group.specialite);
     }
     
-    // Fallback 3: utiliser le code
     if (group.specialiteCode && group.specialiteCode.trim() !== "") {
       return group.specialiteCode;
     }
@@ -119,13 +115,20 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       return group.optionCode;
     }
     
-    // Dernier recours
     return "Spécialité non définie";
   };
 
-  // Fonction pour exporter/ouvrir une fiche en PDF
+  // Fonction pour détecter les chefs de classe
+  function isClassRepresentativeRole(role) {
+    if (!role) return false;
+    const nr = role.toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (!nr) return false;
+    return nr.startsWith("delegue") || nr.startsWith("adjoint") || nr.includes("chef");
+  }
+
+  // Fonction pour exporter/ouvrir une fiche en PDF (méthode simple)
   const exportGroupToPDF = (group) => {
-    const html = generatePDFHTML(group, getSpecialiteDisplay);
+    const html = generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole);
     
     const w = window.open("", "_blank");
     if (!w) {
@@ -145,7 +148,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       return;
     }
 
-    const html = generateAllPDFsHTML(groups, getSpecialiteDisplay);
+    const html = generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole);
     
     const w = window.open("", "_blank");
     if (!w) {
@@ -158,30 +161,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     w.document.close();
   };
 
-  // Fonction pour télécharger toutes les fiches en PDF (version imprimable)
-  const downloadAllPDF = () => {
-    if (groups.length === 0) {
-      alert("Aucune fiche à télécharger.");
-      return;
-    }
-
-    const html = generateAllPDFsHTML(groups, getSpecialiteDisplay);
-    
-    // Créer un blob et le télécharger
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fiches_notes_${academicYear || 'toutes'}_${new Date().toISOString().slice(0,10)}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div style={styles.layout}>
-      {/* Colonne gauche */}
       <aside style={styles.left}>
         <VerticalNavBar
           currentSection={currentSection}
@@ -189,7 +170,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
         />
       </aside>
 
-      {/* Colonne droite */}
       <main style={styles.right}>
         <HorizontalNavBar />
         <div style={styles.pageBody}>
@@ -212,7 +192,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
               studyYearOptions={studyYearOptions}
               groups={groups}
               exportAllToPDF={exportAllToPDF}
-              downloadAllPDF={downloadAllPDF}
             />
 
             <NotesSheetPreview 
@@ -249,7 +228,6 @@ function NotesHeader({
   studyYearOptions,
   groups,
   exportAllToPDF,
-  downloadAllPDF,
 }) {
   const inputStyle = (extra = {}) => ({
     height: 38,
@@ -350,7 +328,6 @@ function NotesHeader({
           </div>
         </div>
 
-        {/* Boutons d'export */}
         <div style={headerStyles.exportButtons}>
           <button
             type="button"
@@ -361,16 +338,6 @@ function NotesHeader({
             <Printer size={16} />
             <span>Imprimer toutes les fiches</span>
           </button>
-          
-          <button
-            type="button"
-            style={headerStyles.exportBtnSecondary}
-            onClick={downloadAllPDF}
-            disabled={!groups || groups.length === 0}
-          >
-            <Download size={16} />
-            <span>Télécharger en PDF</span>
-          </button>
         </div>
       </div>
     </section>
@@ -378,12 +345,10 @@ function NotesHeader({
 }
 
 /* ============================
- * Fiches de notes (plusieurs pages)
+ * Fiches de notes (plusieurs pages) - SANS EN-TÊTE DANS L'INTERFACE
  * ============================ */
 
 function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
-  const logoSrc = "/assets/ipmbtpe-logo.png";
-
   if (!groups || groups.length === 0) {
     return (
       <section>
@@ -420,72 +385,27 @@ function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
                 </button>
               </div>
               <div style={sheetStyles.page}>
-                {/* Bandeau haut : logo + textes officiels */}
-                <div style={sheetStyles.headerRow}>
-                  <div style={sheetStyles.headerLogoBox}>
-                    <img
-                      src={logoSrc}
-                      alt="IPMBTPE"
-                      style={{ width: "110px", height: "auto" }}
-                      onError={(e) => (e.currentTarget.style.display = "none")}
-                    />
-                  </div>
-                  <div style={sheetStyles.headerTextBox}>
-                    <div style={sheetStyles.schoolName}>
-                      INSTITUT POLYTECHNIQUE DES MÉTIERS DU BÂTIMENT,
-                      <br />
-                      TRAVAUX PUBLICS ET DE L&apos;ENTREPRENEURIAT
-                    </div>
-                    <div style={sheetStyles.schoolSubtitle}>
-                      ARRÊTÉ N° ORDERN 25-01077 / MINESUP / SG / DDES / SDESUP /
-                      SDA / AOS du 26 Mars 2025
-                    </div>
-                    <div style={sheetStyles.schoolContact}>
-                      BP : 16398 Mfou / Tél : (+237) 696 79 58 05 - 672 83 80 94 ·
-                      Site web : www.ipmbtpe.cm · E-mail : ipmbtpe@gmail.com
-                    </div>
-                  </div>
-                </div>
-                <div style={sheetStyles.headerUnderline} />
-
-                {/* Année + Niveau, en dehors du tableau */}
-                <div style={sheetStyles.metaBlock}>
-                  <div>
-                    <span style={sheetStyles.metaLabel}>Année académique :</span>{" "}
-                    <span style={sheetStyles.metaValue}>
-                      {group.academicYear || "\u00A0"}
-                    </span>
-                  </div>
-                  <div>
-                    <span style={sheetStyles.metaLabel}>Niveau :</span>{" "}
-                    <span style={sheetStyles.metaValue}>
-                      {group.studyYear ? `Niveau ${group.studyYear}` : "\u00A0"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Titre */}
-                <div style={sheetStyles.centerTitle}>FICHE DE NOTES</div>
-
-                {/* Tableau des notes */}
+                <h3 style={sheetStyles.pageTitle}>
+                  {group.academicYear || "Année académique"} - {getSpecialiteDisplay(group)}
+                </h3>
+                <p style={sheetStyles.pageSubtitle}>
+                  Niveau: {group.studyYear ? `Niveau ${group.studyYear}` : "Non spécifié"}
+                </p>
+                
                 <table style={sheetStyles.table}>
                   <thead>
-                    {/* Première ligne : MATIÈRE / SPÉCIALITÉ */}
-                    <tr>
-                      <th style={sheetStyles.thMatiere} colSpan={3}>
-                        Matière :
-                      </th>
-                      <th style={sheetStyles.thSpecialite} colSpan={2}>
-                        Spécialité : {getSpecialiteDisplay(group)}
-                      </th>
-                    </tr>
-                    {/* Deuxième ligne : entêtes classiques */}
                     <tr>
                       <th style={sheetStyles.thN}>N°</th>
                       <th style={sheetStyles.thMatricule}>Matricule</th>
                       <th style={sheetStyles.thName}>Noms et prénoms</th>
-                      <th style={sheetStyles.thNote}>Notes CC / 20</th>
-                      <th style={sheetStyles.thNote}>Notes SN / 20</th>
+                      <th style={sheetStyles.thNote}>
+                        <div>CC</div>
+                        <div>/ 20</div>
+                      </th>
+                      <th style={sheetStyles.thNote}>
+                        <div>SN</div>
+                        <div>/ 20</div>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -502,24 +422,9 @@ function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
                         <td style={sheetStyles.tdCenter} />
                       </tr>
                     ))}
-
-                    {/* Lignes vides pour compléter à la main (jusqu'à 20) */}
-                    {group.students.length < 20 &&
-                      Array.from({ length: 20 - group.students.length }).map(
-                        (_, i) => (
-                          <tr key={`blank-${group.key}-${i}`}>
-                            <td style={sheetStyles.tdCenter} />
-                            <td style={sheetStyles.tdCenter} />
-                            <td style={sheetStyles.tdLeft} />
-                            <td style={sheetStyles.tdCenter} />
-                            <td style={sheetStyles.tdCenter} />
-                          </tr>
-                        )
-                      )}
                   </tbody>
                 </table>
 
-                {/* Pied de page */}
                 <div style={sheetStyles.footerRow}>
                   Nom, date et signature de l&apos;enseignant :
                 </div>
@@ -533,10 +438,10 @@ function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
 }
 
 /* ============================
- * Fonctions pour générer le HTML PDF
+ * Fonctions pour générer le HTML PDF avec en-tête et couronnes
  * ============================ */
 
-function generatePDFHTML(group, getSpecialiteDisplay) {
+function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole) {
   const logoSrc = "/assets/ipmbtpe-logo.png";
   
   return `
@@ -548,7 +453,7 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
   <style>
     @page {
       size: A4;
-      margin: 15mm;
+      margin: 10mm 10mm 15mm 10mm; /* MARGES AUGMENTÉES à 10mm (au lieu de 16mm) */
     }
     body {
       font-family: Arial, sans-serif;
@@ -561,7 +466,7 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
     .page {
       width: 210mm;
       min-height: 297mm;
-      padding: 15mm;
+      padding: 0;
       box-sizing: border-box;
       page-break-after: always;
     }
@@ -569,7 +474,8 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
       display: flex;
       align-items: flex-start;
       gap: 12px;
-      padding-bottom: 4px;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
     }
     .header-logo-box img {
       width: 110px;
@@ -580,55 +486,66 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
       text-align: center;
     }
     .school-name {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.3;
+      margin-bottom: 3px;
     }
     .school-subtitle {
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       font-style: italic;
-      margin-top: 2px;
+      margin-bottom: 2px;
     }
     .school-contact {
-      font-size: 9px;
-      margin-top: 2px;
+      font-size: 10px;
     }
     .header-underline {
-      margin-top: 8px;
       border-bottom: 3px solid #00b89c;
+      margin: 5px 0 12px 0;
     }
     .meta-block {
-      margin-top: 10px;
-      font-size: 11px;
+      margin: 10px 0;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
     }
     .meta-label {
       font-weight: 700;
     }
+    .meta-value {
+      font-weight: 400;
+    }
     .center-title {
-      margin-top: 15px;
       text-align: center;
       font-weight: 800;
-      font-size: 14px;
+      font-size: 16px;
       text-decoration: underline;
+      margin: 15px 0;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
-      font-size: 11px;
+      font-size: 12px;
     }
     th, td {
       border: 1px solid #000;
       padding: 5px;
       text-align: center;
       vertical-align: middle;
+      height: 25px;
     }
     .th-matiere {
       text-align: left;
-    }
-    .th-specialite {
-      text-align: left;
+      font-weight: bold;
+      border: 1px solid #000;
+      padding: 6px 10px;
     }
     .th-n {
       width: 30px;
@@ -638,18 +555,32 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
     }
     .th-name {
       text-align: left;
+      padding-left: 6px;
+      width: 185px;
     }
     .th-note {
-      width: 100px;
+      width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
+      line-height: 1.2;
+      padding: 2px 4px;
+    }
+    .th-note div {
+      font-size: 10px;
     }
     .td-left {
       text-align: left;
+      padding-left: 6px;
+    }
+    .crown {
+      color: #FF8200;
+      font-weight: bold;
+      margin-left: 4px;
     }
     .footer-row {
       margin-top: 20px;
       border-top: 1px solid #000;
       padding-top: 8px;
-      font-size: 11px;
+      font-size: 12px;
+      text-align: right;
     }
   </style>
 </head>
@@ -675,11 +606,18 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
     <div class="header-underline"></div>
 
     <div class="meta-block">
-      <div>
-        <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
+      <div class="meta-row">
+        <div>
+          <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
+        </div>
+        <div>
+          <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
+        </div>
       </div>
-      <div>
-        <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
+      <div class="meta-row">
+        <div>
+          <span class="meta-label">Spécialité :</span> ${getSpecialiteDisplay(group)}
+        </div>
       </div>
     </div>
 
@@ -688,39 +626,38 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
     <table>
       <thead>
         <tr>
-          <th class="th-matiere" colspan="3">Matière :</th>
-          <th class="th-specialite" colspan="2">Spécialité : ${getSpecialiteDisplay(group)}</th>
+          <th class="th-matiere" colspan="5">Matière :</th>
         </tr>
         <tr>
           <th class="th-n">N°</th>
           <th class="th-matricule">Matricule</th>
           <th class="th-name">Noms et prénoms</th>
-          <th class="th-note">Notes CC / 20</th>
-          <th class="th-note">Notes SN / 20</th>
+          <th class="th-note">
+            <div>CC</div>
+            <div>/ 20</div>
+          </th>
+          <th class="th-note">
+            <div>SN</div>
+            <div>/ 20</div>
+          </th>
         </tr>
       </thead>
       <tbody>
-        ${group.students.map((s, idx) => `
-          <tr>
-            <td>${idx + 1}</td>
-            <td>${s.matricule || ''}</td>
-            <td class="td-left">${formatFullName(s.lastName, s.firstName)}</td>
-            <td></td>
-            <td></td>
-          </tr>
-        `).join('')}
-        
-        ${group.students.length < 20 ? 
-          Array.from({ length: 20 - group.students.length }).map(() => `
+        ${group.students.map((s, idx) => {
+          const isChief = isClassRepresentativeRole(s.classRole);
+          return `
             <tr>
-              <td></td>
-              <td></td>
-              <td class="td-left"></td>
+              <td>${idx + 1}</td>
+              <td>${s.matricule || ''}</td>
+              <td class="td-left">
+                ${formatFullName(s.lastName, s.firstName)}
+                ${isChief ? '<span class="crown">👑</span>' : ''}
+              </td>
               <td></td>
               <td></td>
             </tr>
-          `).join('') : ''
-        }
+          `;
+        }).join('')}
       </tbody>
     </table>
 
@@ -742,7 +679,7 @@ function generatePDFHTML(group, getSpecialiteDisplay) {
 `;
 }
 
-function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
+function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole) {
   const logoSrc = "/assets/ipmbtpe-logo.png";
   
   const pagesHTML = groups.map(group => `
@@ -767,11 +704,18 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
       <div class="header-underline"></div>
 
       <div class="meta-block">
-        <div>
-          <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
+        <div class="meta-row">
+          <div>
+            <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
+          </div>
+          <div>
+            <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
+          </div>
         </div>
-        <div>
-          <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
+        <div class="meta-row">
+          <div>
+            <span class="meta-label">Spécialité :</span> ${getSpecialiteDisplay(group)}
+          </div>
         </div>
       </div>
 
@@ -780,39 +724,38 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
       <table>
         <thead>
           <tr>
-            <th class="th-matiere" colspan="3">Matière :</th>
-            <th class="th-specialite" colspan="2">Spécialité : ${getSpecialiteDisplay(group)}</th>
+            <th class="th-matiere" colspan="5">Matière :</th>
           </tr>
           <tr>
             <th class="th-n">N°</th>
             <th class="th-matricule">Matricule</th>
             <th class="th-name">Noms et prénoms</th>
-            <th class="th-note">Notes CC / 20</th>
-            <th class="th-note">Notes SN / 20</th>
+            <th class="th-note">
+              <div>CC</div>
+              <div>/ 20</div>
+            </th>
+            <th class="th-note">
+              <div>SN</div>
+              <div>/ 20</div>
+            </th>
           </tr>
         </thead>
         <tbody>
-          ${group.students.map((s, idx) => `
-            <tr>
-              <td>${idx + 1}</td>
-              <td>${s.matricule || ''}</td>
-              <td class="td-left">${formatFullName(s.lastName, s.firstName)}</td>
-              <td></td>
-              <td></td>
-            </tr>
-          `).join('')}
-          
-          ${group.students.length < 20 ? 
-            Array.from({ length: 20 - group.students.length }).map(() => `
+          ${group.students.map((s, idx) => {
+            const isChief = isClassRepresentativeRole(s.classRole);
+            return `
               <tr>
-                <td></td>
-                <td></td>
-                <td class="td-left"></td>
+                <td>${idx + 1}</td>
+                <td>${s.matricule || ''}</td>
+                <td class="td-left">
+                  ${formatFullName(s.lastName, s.firstName)}
+                  ${isChief ? '<span class="crown">👑</span>' : ''}
+                </td>
                 <td></td>
                 <td></td>
               </tr>
-            `).join('') : ''
-          }
+            `;
+          }).join('')}
         </tbody>
       </table>
 
@@ -820,6 +763,7 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
         Nom, date et signature de l'enseignant :
       </div>
     </div>
+    <div style="page-break-after: always;"></div>
   `).join('');
 
   return `
@@ -831,7 +775,7 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
   <style>
     @page {
       size: A4;
-      margin: 15mm;
+      margin: 10mm 10mm 15mm 10mm; /* MARGES AUGMENTÉES à 10mm (au lieu de 16mm) */
     }
     body {
       font-family: Arial, sans-serif;
@@ -844,7 +788,7 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
     .page {
       width: 210mm;
       min-height: 297mm;
-      padding: 15mm;
+      padding: 0;
       box-sizing: border-box;
       page-break-after: always;
     }
@@ -852,7 +796,8 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
       display: flex;
       align-items: flex-start;
       gap: 12px;
-      padding-bottom: 4px;
+      padding-bottom: 6px;
+      margin-bottom: 8px;
     }
     .header-logo-box img {
       width: 110px;
@@ -863,55 +808,66 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
       text-align: center;
     }
     .school-name {
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.3;
+      margin-bottom: 3px;
     }
     .school-subtitle {
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 700;
       font-style: italic;
-      margin-top: 2px;
+      margin-bottom: 2px;
     }
     .school-contact {
-      font-size: 9px;
-      margin-top: 2px;
+      font-size: 10px;
     }
     .header-underline {
-      margin-top: 8px;
       border-bottom: 3px solid #00b89c;
+      margin: 5px 0 12px 0;
     }
     .meta-block {
-      margin-top: 10px;
-      font-size: 11px;
+      margin: 10px 0;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
     }
     .meta-label {
       font-weight: 700;
     }
+    .meta-value {
+      font-weight: 400;
+    }
     .center-title {
-      margin-top: 15px;
       text-align: center;
       font-weight: 800;
-      font-size: 14px;
+      font-size: 16px;
       text-decoration: underline;
+      margin: 15px 0;
     }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
-      font-size: 11px;
+      font-size: 12px;
     }
     th, td {
       border: 1px solid #000;
       padding: 5px;
       text-align: center;
       vertical-align: middle;
+      height: 25px;
     }
     .th-matiere {
       text-align: left;
-    }
-    .th-specialite {
-      text-align: left;
+      font-weight: bold;
+      border: 1px solid #000;
+      padding: 6px 10px;
     }
     .th-n {
       width: 30px;
@@ -921,18 +877,32 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
     }
     .th-name {
       text-align: left;
+      padding-left: 6px;
+      width: 185px;
     }
     .th-note {
-      width: 100px;
+      width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
+      line-height: 1.2;
+      padding: 2px 4px;
+    }
+    .th-note div {
+      font-size: 10px;
     }
     .td-left {
       text-align: left;
+      padding-left: 6px;
+    }
+    .crown {
+      color: #FF8200;
+      font-weight: bold;
+      margin-left: 4px;
     }
     .footer-row {
       margin-top: 20px;
       border-top: 1px solid #000;
       padding-top: 8px;
-      font-size: 11px;
+      font-size: 12px;
+      text-align: right;
     }
   </style>
 </head>
@@ -940,10 +910,9 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay) {
   ${pagesHTML}
   
   <script>
-    // Optionnel: décommenter pour imprimer automatiquement
-    // window.onload = function() {
-    //   window.print();
-    // };
+    window.onload = function() {
+      window.print();
+    };
   </script>
 </body>
 </html>
@@ -966,6 +935,7 @@ function buildAcademicYears() {
 }
 
 function formatFullName(lastName, firstName) {
+  if (!lastName && !firstName) return "";
   const last = (lastName || "").toUpperCase();
   const first = firstName || "";
   return `${last} ${first}`.trim();
@@ -1082,20 +1052,6 @@ const headerStyles = {
     cursor: "pointer",
     transition: "background 0.2s",
   },
-  exportBtnSecondary: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "8px 16px",
-    borderRadius: 999,
-    border: "1px solid var(--border)",
-    background: "white",
-    color: "#333",
-    fontSize: ".85rem",
-    fontWeight: 600,
-    cursor: "pointer",
-    transition: "background 0.2s",
-  },
 };
 
 const sheetStyles = {
@@ -1160,75 +1116,21 @@ const sheetStyles = {
     flexDirection: "column",
     gap: "10px",
   },
-  headerRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "12px",
-    paddingBottom: "4px",
-  },
-  headerLogoBox: {
-    flexShrink: 0,
-    display: "flex",
-    alignItems: "flex-start",
-    justifyContent: "center",
-  },
-  headerTextBox: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-  },
-  schoolName: {
-    fontSize: "0.95rem",
-    fontWeight: 700,
-    textAlign: "center",
-  },
-  schoolSubtitle: {
-    fontSize: "0.7rem",
-    fontWeight: 700,
-    fontStyle: "italic",
-    textAlign: "center",
-  },
-  schoolContact: {
-    fontSize: "0.68rem",
-    textAlign: "center",
-  },
-  headerUnderline: {
-    marginTop: "4px",
-    borderBottom: "3px solid #00b89c",
-  },
-  metaBlock: {
-    marginTop: 6,
-    fontSize: "0.8rem",
-  },
-  metaLabel: {
+  pageTitle: {
+    margin: 0,
+    fontSize: "1rem",
     fontWeight: 700,
   },
-  metaValue: {
-    fontWeight: 400,
-  },
-  centerTitle: {
-    marginTop: 10,
-    textAlign: "center",
-    fontWeight: 800,
-    fontSize: "0.9rem",
-    textDecoration: "underline",
+  pageSubtitle: {
+    margin: "4px 0 10px 0",
+    fontSize: ".85rem",
+    color: "#6B7280",
   },
   table: {
     width: "100%",
     borderCollapse: "collapse",
     marginTop: 8,
     fontSize: "0.8rem",
-  },
-  thMatiere: {
-    border: "1px solid #000",
-    padding: "4px 4px",
-    textAlign: "left",
-  },
-  thSpecialite: {
-    border: "1px solid #000",
-    padding: "4px 4px",
-    textAlign: "left",
   },
   thN: {
     border: "1px solid #000",
@@ -1245,13 +1147,16 @@ const sheetStyles = {
   thName: {
     border: "1px solid #000",
     padding: "4px 4px",
-    textAlign: "center",
+    textAlign: "left",
+    width: "185px",
   },
   thNote: {
     border: "1px solid #000",
-    padding: "4px 4px",
-    width: "90px",
+    padding: "2px 4px",
+    width: "45px", /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
     textAlign: "center",
+    fontSize: "0.75rem",
+    lineHeight: "1.2",
   },
   tdCenter: {
     border: "1px solid #000",
@@ -1269,5 +1174,6 @@ const sheetStyles = {
     borderTop: "1px solid #000",
     paddingTop: 6,
     fontSize: "0.8rem",
+    textAlign: "right",
   },
 };
