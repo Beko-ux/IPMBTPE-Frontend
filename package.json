@@ -1,13 +1,18 @@
 {
   "name": "frontend-ipmbtpe",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "main": "main.mjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "concurrently -k -n \"VITE,ELECTRON\" -c \"green,blue\" \"npm run dev\" \"wait-on http://localhost:5173 && npx electron .\"",
+    "electron": "npx electron .",
+    "electron:build": "npm run build && electron-builder",
+    "dist": "npm run electron:build"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.3.1",
@@ -24,10 +29,45 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.1.2",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.36.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.22",
     "globals": "^16.4.0",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.ipmbtpe.notes",
+    "productName": "IPMBTPE Notes",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "main.mjs",
+      "preload.mjs",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "public/favicon.ico",
+      "publisherName": "IPMBTPE"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IPMBTPE Notes"
+    },
+    "portable": {
+      "artifactName": "IPMBTPE_Notes_Portable.exe"
+    }
   }
 }

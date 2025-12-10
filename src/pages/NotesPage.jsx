@@ -1,8 +1,10 @@
 // src/pages/NotesPage.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Printer } from "lucide-react";
+import { Printer, Download } from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -10,12 +12,16 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   // Filtres
   const [academicYear, setAcademicYear] = useState("");
   const [filiere, setFiliere] = useState("");
   const [specialite, setSpecialite] = useState("");
   const [studyYear, setStudyYear] = useState("");
+
+  // Référence pour le contenu PDF
+  const pdfContentRef = useRef(null);
 
   // Charger les étudiants une fois pour alimenter les filtres
   useEffect(() => {
@@ -161,6 +167,64 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     w.document.close();
   };
 
+  // Fonction pour télécharger en PDF avec jsPDF
+  const downloadAsPDF = async () => {
+    if (groups.length === 0) {
+      alert("Aucune fiche à télécharger.");
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      // Créer un élément temporaire pour le contenu PDF
+      const tempDiv = document.createElement("div");
+      tempDiv.style.position = "absolute";
+      tempDiv.style.left = "-9999px";
+      tempDiv.style.top = "0";
+      tempDiv.style.width = "210mm"; // Largeur A4
+      tempDiv.style.padding = "20px";
+      tempDiv.style.backgroundColor = "white";
+      tempDiv.style.fontFamily = "Arial, sans-serif";
+      tempDiv.style.fontSize = "12px";
+      
+      // Ajouter le contenu HTML formaté
+      tempDiv.innerHTML = generatePDFContentHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole);
+      
+      document.body.appendChild(tempDiv);
+      
+      // Convertir en canvas
+      const canvas = await html2canvas(tempDiv, {
+        scale: 2, // Qualité haute
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#ffffff"
+      });
+      
+      // Nettoyer
+      document.body.removeChild(tempDiv);
+      
+      // Dimensions
+      const imgWidth = 210; // A4 width in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      // Créer PDF
+      const pdf = new jsPDF("p", "mm", "a4");
+      const imgData = canvas.toDataURL("image/png");
+      
+      // Ajouter l'image au PDF
+      pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+      
+      // Télécharger
+      pdf.save(`fiches_notes_${academicYear || 'toutes'}_${new Date().toISOString().slice(0,10)}.pdf`);
+      
+    } catch (error) {
+      console.error("Erreur génération PDF:", error);
+      alert("Erreur lors de la génération du PDF. Vérifiez la console pour plus de détails.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div style={styles.layout}>
       <aside style={styles.left}>
@@ -192,7 +256,18 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
               studyYearOptions={studyYearOptions}
               groups={groups}
               exportAllToPDF={exportAllToPDF}
+              downloadAsPDF={downloadAsPDF}
+              downloading={downloading}
             />
+
+            {/* Contenu caché pour le PDF */}
+            <div ref={pdfContentRef} style={{ display: 'none' }}>
+              {groups.length > 0 && (
+                <div id="pdf-content">
+                  {generatePDFContentHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole)}
+                </div>
+              )}
+            </div>
 
             <NotesSheetPreview 
               groups={groups} 
@@ -228,6 +303,8 @@ function NotesHeader({
   studyYearOptions,
   groups,
   exportAllToPDF,
+  downloadAsPDF,
+  downloading,
 }) {
   const inputStyle = (extra = {}) => ({
     height: 38,
@@ -338,6 +415,16 @@ function NotesHeader({
             <Printer size={16} />
             <span>Imprimer toutes les fiches</span>
           </button>
+          
+          <button
+            type="button"
+            style={headerStyles.exportBtnSecondary}
+            onClick={downloadAsPDF}
+            disabled={!groups || groups.length === 0 || downloading}
+          >
+            <Download size={16} />
+            <span>{downloading ? "Génération..." : "Télécharger PDF"}</span>
+          </button>
         </div>
       </div>
     </section>
@@ -438,7 +525,101 @@ function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
 }
 
 /* ============================
- * Fonctions pour générer le HTML PDF avec en-tête et couronnes
+ * Fonction pour générer le HTML pour jsPDF
+ * ============================ */
+
+function generatePDFContentHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole) {
+  const logoSrc = "/assets/ipmbtpe-logo.png";
+  
+  return groups.map((group, groupIndex) => `
+    <div class="pdf-page" style="margin-bottom: 30px; page-break-after: always;">
+      <div class="header-row" style="display: flex; align-items: flex-start; gap: 12px; margin-bottom: 15px;">
+        <div class="header-logo-box">
+          <img src="${logoSrc}" alt="IPMBTPE" style="width: 100px; height: auto;" />
+        </div>
+        <div class="header-text-box" style="flex: 1; text-align: center;">
+          <div class="school-name" style="font-size: 14px; font-weight: 700; line-height: 1.3; margin-bottom: 3px;">
+            INSTITUT POLYTECHNIQUE DES MÉTIERS DU BÂTIMENT,<br />
+            TRAVAUX PUBLICS ET DE L'ENTREPRENEURIAT
+          </div>
+          <div class="school-subtitle" style="font-size: 10px; font-weight: 700; font-style: italic; margin-bottom: 2px;">
+            ARRÊTÉ N° ORDERN 25-01077 / MINESUP / SG / DDES / SDESUP / SDA / AOS du 26 Mars 2025
+          </div>
+          <div class="school-contact" style="font-size: 10px;">
+            BP : 16398 Mfou / Tél : (+237) 696 79 58 05 - 672 83 80 94 · Site web : www.ipmbtpe.cm · E-mail : ipmbtpe@gmail.com
+          </div>
+        </div>
+      </div>
+      
+      <div class="header-underline" style="border-bottom: 3px solid #00b89c; margin: 10px 0 15px 0;"></div>
+
+      <div class="meta-block" style="margin: 15px 0; font-size: 12px;">
+        <div class="meta-row" style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <div>
+            <span style="font-weight: 700;">Année académique :</span> ${group.academicYear || '—'}
+          </div>
+          <div>
+            <span style="font-weight: 700;">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
+          </div>
+        </div>
+        <div class="meta-row" style="display: flex; justify-content: space-between;">
+          <div>
+            <span style="font-weight: 700;">Spécialité :</span> ${getSpecialiteDisplay(group)}
+          </div>
+        </div>
+      </div>
+
+      <div class="center-title" style="text-align: center; font-weight: 800; font-size: 16px; text-decoration: underline; margin: 20px 0;">
+        FICHE DE NOTES
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+          <tr>
+            <th style="text-align: left; font-weight: bold; border: 1px solid #000; padding: 8px 10px;" colspan="5">Matière :</th>
+          </tr>
+          <tr>
+            <th style="border: 1px solid #000; padding: 6px; width: 30px; text-align: center;">N°</th>
+            <th style="border: 1px solid #000; padding: 6px; width: 87px; text-align: center;">Matricule</th>
+            <th style="border: 1px solid #000; padding: 6px; text-align: left; width: 182px;">Noms et prénoms</th>
+            <th style="border: 1px solid #000; padding: 6px; width: 45px; text-align: center; line-height: 1.2;">
+              <div>CC</div>
+              <div>/ 20</div>
+            </th>
+            <th style="border: 1px solid #000; padding: 6px; width: 45px; text-align: center; line-height: 1.2;">
+              <div>SN</div>
+              <div>/ 20</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          ${group.students.map((s, idx) => {
+            const isChief = isClassRepresentativeRole(s.classRole);
+            return `
+              <tr>
+                <td style="border: 1px solid #000; padding: 5px; text-align: center;">${idx + 1}</td>
+                <td style="border: 1px solid #000; padding: 5px; text-align: center;">${s.matricule || ''}</td>
+                <td style="border: 1px solid #000; padding: 5px; text-align: left;">
+                  ${formatFullName(s.lastName, s.firstName)}
+                  ${isChief ? '<span style="color: #FF8200; font-weight: bold; margin-left: 4px;">👑</span>' : ''}
+                </td>
+                <td style="border: 1px solid #000; padding: 5px; text-align: center;"></td>
+                <td style="border: 1px solid #000; padding: 5px; text-align: center;"></td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+
+      <div class="footer-row" style="margin-top: 25px; border-top: 1px solid #000; padding-top: 10px; font-size: 12px; text-align: right;">
+        Nom, date et signature de l'enseignant :
+      </div>
+    </div>
+  `).join('');
+}
+
+/* ============================
+ * Fonctions pour générer le HTML PDF avec en-tête et couronnes (anciennes fonctions gardées)
  * ============================ */
 
 function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole) {
@@ -449,7 +630,7 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Fiche de report de notes - ${group.academicYear || ''} - ${getSpecialiteDisplay(group)}</title>
+  <title>Fiche de notes - ${group.academicYear || ''} - ${getSpecialiteDisplay(group)}</title>
   <style>
     @page {
       size: A4;
@@ -623,7 +804,7 @@ function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole)
       </div>
     </div>
 
-    <div class="center-title">FICHE DE REPORT DE NOTES</div>
+    <div class="center-title">FICHE DE NOTES</div>
 
     <table>
       <thead>
@@ -721,7 +902,7 @@ function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentative
         </div>
       </div>
 
-      <div class="center-title">FICHE DE REPORT DE NOTES</div>
+      <div class="center-title">FICHE DE NOTES</div>
 
       <table>
         <thead>
@@ -1050,6 +1231,20 @@ const headerStyles = {
     borderRadius: 999,
     border: "none",
     background: "#00b89c",
+    color: "white",
+    fontSize: ".85rem",
+    fontWeight: 600,
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
+  exportBtnSecondary: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "8px 16px",
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "#3b82f6",
     color: "white",
     fontSize: ".85rem",
     fontWeight: 600,

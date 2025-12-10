@@ -59,7 +59,7 @@ const DICT = {
       "Génie Informatique": [
         ["Génie Logiciel", "GLI"],
         ["E-Commerce et Marketing Numérique", "ECM"],
-        ["Maintenance Systèmes Informatiques", "GSI"],
+        ["Gestion des Systèmes Informatiques", "GSI"],
         ["Informatique Industrielle et Automatisme", "IIA"],
       ],
       Télécommunication: [
