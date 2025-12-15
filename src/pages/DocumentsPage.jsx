@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { colors } from "../styles/theme";
 import StudentBadgeSheet from "../components/documents/StudentBadgeSheet.jsx";
+import ClassNotesBlankSheet from "../components/documents/ClassNotesBlankSheet.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -27,6 +28,9 @@ export default function DocumentsPage({
   // sélection multi-étudiants (illimitée)
   const [badgeSelection, setBadgeSelection] = useState([]);
   const [showBadgeModal, setShowBadgeModal] = useState(false);
+
+  // fiche de report de notes (classe)
+  const [showNotesSheetModal, setShowNotesSheetModal] = useState(false);
 
   // liste complète (chargée seulement quand on clique “Ajouter sa classe”)
   const [allStudents, setAllStudents] = useState([]);
@@ -196,7 +200,7 @@ export default function DocumentsPage({
             <header style={{ marginBottom: "1.25rem" }}>
               <h1 style={styles.title}>Génération de documents</h1>
               <p style={styles.subtitle}>
-                Certificats, relevés et cartes d&apos;étudiant.
+                Certificats, relevés, cartes et fiches de notes.
               </p>
             </header>
 
@@ -324,7 +328,7 @@ export default function DocumentsPage({
                   title="Certificat de scolarité"
                   description={
                     isStudentSelected
-                      ? "Document officiel attestant de l’inscription de l’étudiant avec QR code de vérification."
+                      ? "Document officiel attestant de l’inscription de l’étudiant."
                       : "Sélectionnez un étudiant pour continuer."
                   }
                   disabled={!isStudentSelected}
@@ -346,7 +350,7 @@ export default function DocumentsPage({
                   title="Carte d’étudiant"
                   description={
                     isStudentSelected
-                      ? "Carte format ID-1 (85,6×54mm) avec photo, QR code et code-barres."
+                      ? "Carte format ID-1 (85,6×54mm) avec photo."
                       : "Sélectionnez un étudiant pour continuer."
                   }
                   disabled={!isStudentSelected}
@@ -365,19 +369,30 @@ export default function DocumentsPage({
                             : `${Math.ceil(badgeSelection.length / 4)} pages A4`
                         }`
                       : isStudentSelected
-                      ? "Utilisez la liste au-dessus pour ajouter des étudiants, puis générez la feuille."
+                      ? "Utilisez la liste au-dessus pour ajouter des étudiants."
                       : "Recherchez des étudiants puis ajoutez-les aux badges."
                   }
                   disabled={!isStudentSelected}
                   onClick={() => openDocument("badge")}
                   accent="orange"
                 />
+
+                {/* NOUVELLE CARTE : FICHE DE REPORT DE NOTES */}
+                <DocumentTile
+                  icon={<FileText size={20} color="#2563EB" />}
+                  title="Fiche de report de notes (classe)"
+                  description="Générer une fiche vierge par classe pour CC / 20 et SN / 20."
+                  disabled={false}
+                  onClick={() => setShowNotesSheetModal(true)}
+                  accent="teal"
+                />
               </div>
 
               {!isStudentSelected && (
                 <p style={styles.infoText}>
-                  Sélectionnez d&apos;abord un étudiant pour activer la génération
-                  de documents.
+                  Pour les documents individuels (certificat, carte, badge),
+                  sélectionnez d&apos;abord un étudiant. La fiche de report de
+                  notes fonctionne par classe.
                 </p>
               )}
             </section>
@@ -389,6 +404,12 @@ export default function DocumentsPage({
         <StudentBadgeSheet
           students={badgeSelection.length ? badgeSelection : [selectedStudent]}
           onClose={() => setShowBadgeModal(false)}
+        />
+      )}
+
+      {showNotesSheetModal && (
+        <ClassNotesBlankSheet
+          onClose={() => setShowNotesSheetModal(false)}
         />
       )}
     </div>

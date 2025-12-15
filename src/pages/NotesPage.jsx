@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Printer } from "lucide-react";
+import { Printer, Lock, BarChart2, Download } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -10,14 +10,30 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const [students, setStudents] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Filtres
+  // Filtres pour choisir la CLASSE
   const [academicYear, setAcademicYear] = useState("");
   const [filiere, setFiliere] = useState("");
   const [specialite, setSpecialite] = useState("");
   const [studyYear, setStudyYear] = useState("");
 
-  // Charger les étudiants une fois pour alimenter les filtres
+  // Config de la fiche (matière, session, échelle…)
+  const [configOpen, setConfigOpen] = useState(false);
+  const [sheetConfig, setSheetConfig] = useState({
+    subjectLabel: "",
+    session: "normale", // "normale" | "rattrapage"
+    scaleMax: 20,
+  });
+
+  // Onglets : Saisie / Rattrapage / Synthèse
+  const [activeTab, setActiveTab] = useState("saisie");
+
+  // Notes saisies dans le tableau
+  // clé = student.id OU matricule
+  const [notes, setNotes] = useState({});
+
+  // Charger les étudiants (pour générer les listes de filières/spécialités)
   useEffect(() => {
     const loadStudents = async () => {
       try {
@@ -29,11 +45,10 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
         setStudents([]);
       }
     };
-
     loadStudents();
   }, []);
 
-  // Charger les fiches (groups) depuis le backend, selon les filtres
+  // Charger les "groups" (une group = une classe avec liste d'étudiants)
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -47,10 +62,13 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
         const res = await fetch(url);
         const data = await res.json();
-        setGroups(Array.isArray(data.groups) ? data.groups : []);
+        const groupsArray = Array.isArray(data.groups) ? data.groups : [];
+        setGroups(groupsArray);
+        setNotes({}); // reset des notes quand la classe change
       } catch (e) {
         console.error(e);
         setGroups([]);
+        setNotes({});
       } finally {
         setLoading(false);
       }
@@ -62,7 +80,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   // Années académiques possibles
   const academicYearOptions = useMemo(() => buildAcademicYears(), []);
 
-  // Options de filtres calculées depuis les étudiants
+  // Listes de filtres depuis les étudiants
   const filiereOptions = useMemo(() => {
     const set = new Set();
     students.forEach((s) => s.filiere && set.add(s.filiere));
@@ -81,99 +99,146 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   const studyYearOptions = [1, 2, 3, 4, 5];
 
-  const totalStudents = useMemo(
-    () => groups.reduce((sum, g) => sum + (g.students?.length || 0), 0),
+  const currentGroup = useMemo(
+    () => (groups.length > 0 ? groups[0] : null),
     [groups]
   );
+
+  const totalStudents = currentGroup?.students?.length || 0;
   const groupCount = groups.length;
 
-  // Fonction pour formater avec première lettre en majuscule
-  const capitalizeFirst = (text) => {
-    if (!text) return "";
-    return text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-  };
+  // -------- Helpers pour la saisie de notes --------
 
-  // Fonction simplifiée pour afficher la spécialité
-  const getSpecialiteDisplay = (group) => {
-    if (group.displayName && group.displayName.trim() !== "") {
-      return capitalizeFirst(group.displayName);
-    }
-    
-    if (group.option && group.option.trim() !== "") {
-      return capitalizeFirst(group.option);
-    }
-    
-    if (group.specialite && group.specialite.trim() !== "") {
-      return capitalizeFirst(group.specialite);
-    }
-    
-    if (group.specialiteCode && group.specialiteCode.trim() !== "") {
-      return group.specialiteCode;
-    }
-    
-    if (group.optionCode && group.optionCode.trim() !== "") {
-      return group.optionCode;
-    }
-    
-    return "Spécialité non définie";
-  };
+  const scaleMax = Number(sheetConfig.scaleMax) || 20;
 
-  // Fonction pour détecter les chefs de classe
-  function isClassRepresentativeRole(role) {
-    if (!role) return false;
-    const nr = role.toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (!nr) return false;
-    return nr.startsWith("delegue") || nr.startsWith("adjoint") || nr.includes("chef");
-  }
+  const keyForStudent = (s) => s.id || s.matricule || String(s._id || "");
 
-  // Fonction pour exporter/ouvrir une fiche en PDF (méthode simple)
-  const exportGroupToPDF = (group) => {
-    const html = generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole);
-    
-    const w = window.open("", "_blank");
-    if (!w) {
-      alert("Popup bloquée. Autorisez les popups pour exporter en PDF.");
+  const handleNoteChange = (student, value) => {
+    const key = keyForStudent(student);
+    let v = value.replace(",", "."); // au cas où quelqu'un tape 12,5
+    if (v === "") {
+      setNotes((prev) => ({ ...prev, [key]: "" }));
       return;
     }
-    
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+    const num = Number(v);
+    if (Number.isNaN(num)) return;
+    if (num < 0) return;
+    if (num > scaleMax) return;
+    setNotes((prev) => ({ ...prev, [key]: v }));
   };
 
-  // Fonction pour exporter toutes les fiches filtrées en PDF
-  const exportAllToPDF = () => {
-    if (groups.length === 0) {
-      alert("Aucune fiche à exporter.");
+  const getNoteValue = (student) => {
+    const key = keyForStudent(student);
+    return notes[key] ?? "";
+  };
+
+  const computeMention = (raw) => {
+    if (raw === "" || raw == null) return "—";
+    const n = Number(raw);
+    if (Number.isNaN(n)) return "—";
+    if (n < 10) return "Ajourné";
+    if (n < 12) return "Passable";
+    if (n < 14) return "Assez bien";
+    if (n < 16) return "Bien";
+    return "Très bien";
+  };
+
+  const computeStatus = (raw) => {
+    if (raw === "" || raw == null) return "—";
+    const n = Number(raw);
+    if (Number.isNaN(n)) return "—";
+    return n >= 10 ? "Validé" : "Non validé";
+  };
+
+  const sessionLabel =
+    sheetConfig.session === "rattrapage" ? "Session de rattrapage" : "Session normale";
+
+  // -------- Enregistrement des notes --------
+
+  const handleSave = async () => {
+    if (!currentGroup) {
+      alert("Aucune classe sélectionnée.");
+      return;
+    }
+    if (!sheetConfig.subjectLabel.trim()) {
+      alert("Veuillez d'abord choisir la matière (bouton « Configurer la fiche de notes »).");
       return;
     }
 
-    const html = generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole);
-    
-    const w = window.open("", "_blank");
-    if (!w) {
-      alert("Popup bloquée. Autorisez les popups pour exporter en PDF.");
+    const payloadNotes = (currentGroup.students || [])
+      .map((s) => {
+        const key = keyForStudent(s);
+        const raw = notes[key];
+        if (raw === "" || raw == null) return null;
+        const note = Number(raw);
+        if (Number.isNaN(note)) return null;
+        const mention = computeMention(note);
+        const status = computeStatus(note);
+        return {
+          studentId: s.id || s._id || null,
+          matricule: s.matricule || null,
+          note,
+          mention,
+          status,
+        };
+      })
+      .filter(Boolean);
+
+    if (payloadNotes.length === 0) {
+      alert("Aucune note à enregistrer.");
       return;
     }
-    
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
+
+    const body = {
+      academicYear: currentGroup.academicYear || academicYear || null,
+      filiere: currentGroup.filiere || filiere || null,
+      specialite: currentGroup.specialite || currentGroup.displayName || specialite || null,
+      studyYear: currentGroup.studyYear || Number(studyYear) || null,
+      subjectLabel: sheetConfig.subjectLabel,
+      session: sheetConfig.session,
+      scaleMax: scaleMax,
+      notes: payloadNotes,
+    };
+
+    try {
+      setSaving(true);
+      const res = await fetch(`${API_BASE}/notes/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erreur lors de l’enregistrement des notes.");
+      }
+      alert("Notes enregistrées avec succès.");
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "Échec de l’enregistrement des notes.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleCancel = () => {
+    if (window.confirm("Annuler les modifications non enregistrées ?")) {
+      setNotes({});
+    }
+  };
+
+  // -------- Rendu principal --------
 
   return (
     <div style={styles.layout}>
       <aside style={styles.left}>
-        <VerticalNavBar
-          currentSection={currentSection}
-          onNavigate={onNavigate}
-        />
+        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
       </aside>
 
       <main style={styles.right}>
         <HorizontalNavBar />
         <div style={styles.pageBody}>
           <div style={styles.container}>
+            {/* Header : filtres + bouton config fiche */}
             <NotesHeader
               loading={loading}
               totalStudents={totalStudents}
@@ -190,24 +255,47 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
               studyYear={studyYear}
               setStudyYear={setStudyYear}
               studyYearOptions={studyYearOptions}
-              groups={groups}
-              exportAllToPDF={exportAllToPDF}
+              currentGroup={currentGroup}
+              sheetConfig={sheetConfig}
+              onOpenConfig={() => setConfigOpen(true)}
             />
 
-            <NotesSheetPreview 
-              groups={groups} 
-              getSpecialiteDisplay={getSpecialiteDisplay}
-              exportGroupToPDF={exportGroupToPDF}
+            {/* Carte de saisie des notes */}
+            <NotesEntryCard
+              currentGroup={currentGroup}
+              sheetConfig={sheetConfig}
+              activeTab={activeTab}
+              setActiveTab={setActiveTab}
+              scaleMax={scaleMax}
+              getNoteValue={getNoteValue}
+              handleNoteChange={handleNoteChange}
+              computeMention={computeMention}
+              computeStatus={computeStatus}
+              onCancel={handleCancel}
+              onSave={handleSave}
+              saving={saving}
             />
           </div>
         </div>
       </main>
+
+      {/* Pop-up de configuration de la fiche (matière / session / échelle) */}
+      {configOpen && (
+        <NoteConfigModal
+          initialConfig={sheetConfig}
+          onClose={() => setConfigOpen(false)}
+          onSave={(cfg) => {
+            setSheetConfig(cfg);
+            setConfigOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /* ============================
- * Header : filtres + résumé + boutons d'export
+ * Header : filtres + résumé + config fiche
  * ============================ */
 
 function NotesHeader({
@@ -226,8 +314,9 @@ function NotesHeader({
   studyYear,
   setStudyYear,
   studyYearOptions,
-  groups,
-  exportAllToPDF,
+  currentGroup,
+  sheetConfig,
+  onOpenConfig,
 }) {
   const inputStyle = (extra = {}) => ({
     height: 38,
@@ -241,19 +330,32 @@ function NotesHeader({
     ...extra,
   });
 
+  const classLabel = currentGroup
+    ? `${currentGroup.academicYear || ""} · ${currentGroup.displayName || ""} ${
+        currentGroup.studyYear ? `· Niveau ${currentGroup.studyYear}` : ""
+      }`
+    : "Aucune classe sélectionnée (ajustez les filtres)";
+
+  const subjectDisplay = sheetConfig.subjectLabel
+    ? sheetConfig.subjectLabel
+    : "Aucune matière sélectionnée";
+
   return (
     <section style={headerStyles.card}>
       <div style={headerStyles.left}>
         <h1 style={headerStyles.title}>Gestion des notes</h1>
         <p style={headerStyles.subtitle}>
-          Sélectionnez l&apos;année académique, la filière, la spécialité et le
-          niveau pour générer les fiches de notes. Quand aucun filtre n&apos;est
-          choisi, une fiche est générée pour <strong>chaque classe</strong>.
+          Choisissez la classe avec les filtres ci-dessous, configurez la matière, puis
+          saisissez les notes des étudiants.
         </p>
         <p style={headerStyles.badge}>
           {loading
-            ? "Chargement des fiches…"
-            : `${totalStudents} étudiant(s) · ${groupCount} fiche(s)`}
+            ? "Chargement des étudiants…"
+            : `${totalStudents} étudiant(s) dans la classe sélectionnée · ${groupCount} groupe(s) trouvé(s)`}
+        </p>
+        <p style={headerStyles.classInfo}>{classLabel}</p>
+        <p style={headerStyles.subjectInfo}>
+          <strong>Matière :</strong> {subjectDisplay}
         </p>
       </div>
 
@@ -328,603 +430,285 @@ function NotesHeader({
           </div>
         </div>
 
-        <div style={headerStyles.exportButtons}>
+        <div style={headerStyles.topButtons}>
           <button
             type="button"
-            style={headerStyles.exportBtnPrimary}
-            onClick={exportAllToPDF}
-            disabled={!groups || groups.length === 0}
+            style={headerStyles.configBtn}
+            onClick={onOpenConfig}
           >
             <Printer size={16} />
-            <span>Imprimer toutes les fiches</span>
+            <span>Configurer la fiche de notes</span>
+          </button>
+
+          {/* Boutons décoratifs comme sur ta capture : pas encore implémentés */}
+          <div style={headerStyles.actionsRow}>
+            <button type="button" style={headerStyles.smallBtn} disabled>
+              <BarChart2 size={15} />
+              <span>Statistiques</span>
+            </button>
+            <button type="button" style={headerStyles.smallBtn} disabled>
+              <Download size={15} />
+              <span>Exporter</span>
+            </button>
+            <button type="button" style={headerStyles.lockBtn} disabled>
+              <Lock size={16} />
+              <span>Verrouiller</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================
+ * Carte de saisie des notes
+ * ============================ */
+
+function NotesEntryCard({
+  currentGroup,
+  sheetConfig,
+  activeTab,
+  setActiveTab,
+  scaleMax,
+  getNoteValue,
+  handleNoteChange,
+  computeMention,
+  computeStatus,
+  onCancel,
+  onSave,
+  saving,
+}) {
+  const students = currentGroup?.students || [];
+
+  const sessionLabel =
+    sheetConfig.session === "rattrapage" ? "Session de rattrapage" : "Session normale";
+
+  return (
+    <section style={entryStyles.card}>
+      <div style={entryStyles.headerRow}>
+        <div>
+          <h2 style={entryStyles.title}>
+            Saisie des notes
+            {sheetConfig.subjectLabel ? ` - ${sheetConfig.subjectLabel}` : ""}
+          </h2>
+          <p style={entryStyles.subtitle}>
+            {sessionLabel} · Échelle de 0 à {scaleMax}
+          </p>
+        </div>
+      </div>
+
+      {/* Onglets (comme sur ta capture : Saisie / Rattrapage / Synthèse) */}
+      <div style={entryStyles.tabsRow}>
+        <TabButton
+          label="Saisie"
+          active={activeTab === "saisie"}
+          onClick={() => setActiveTab("saisie")}
+        />
+        <TabButton
+          label="Rattrapage"
+          active={activeTab === "rattrapage"}
+          onClick={() => setActiveTab("rattrapage")}
+          disabled
+        />
+        <TabButton
+          label="Synthèse"
+          active={activeTab === "synthese"}
+          onClick={() => setActiveTab("synthese")}
+          disabled
+        />
+      </div>
+
+      {/* Tableau principal */}
+      <div style={entryStyles.tableWrapper}>
+        {students.length === 0 ? (
+          <p style={entryStyles.emptyState}>
+            Aucun étudiant pour les filtres et la classe sélectionnés.
+          </p>
+        ) : (
+          <table style={entryStyles.table}>
+            <thead>
+              <tr>
+                <th style={entryStyles.thIndex}>#</th>
+                <th style={entryStyles.thMatricule}>Matricule</th>
+                <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
+                <th style={entryStyles.thNote}>Note /{scaleMax}</th>
+                <th style={entryStyles.thMention}>Mention</th>
+                <th style={entryStyles.thStatus}>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((s, idx) => {
+                const val = getNoteValue(s);
+                const mention = computeMention(val);
+                const status = computeStatus(val);
+                return (
+                  <tr key={s.id || s.matricule || idx}>
+                    <td style={entryStyles.tdIndex}>{idx + 1}</td>
+                    <td style={entryStyles.tdMatricule}>{s.matricule || "—"}</td>
+                    <td style={entryStyles.tdName}>
+                      {formatFullName(s.lastName, s.firstName)}
+                    </td>
+                    <td style={entryStyles.tdNote}>
+                      <input
+                        type="number"
+                        min={0}
+                        max={scaleMax}
+                        step="0.25"
+                        style={entryStyles.noteInput}
+                        value={val}
+                        onChange={(e) => handleNoteChange(s, e.target.value)}
+                      />
+                    </td>
+                    <td style={entryStyles.tdMention}>{mention}</td>
+                    <td style={entryStyles.tdStatus}>{status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Footer actions */}
+      <div style={entryStyles.footerRow}>
+        <button type="button" style={entryStyles.btnGhost} onClick={onCancel}>
+          Annuler
+        </button>
+        <button
+          type="button"
+          style={entryStyles.btnPrimary}
+          onClick={onSave}
+          disabled={saving || students.length === 0}
+        >
+          {saving ? "Enregistrement…" : "Enregistrer"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* ============================
+ * Tab button
+ * ============================ */
+
+function TabButton({ label, active, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...entryStyles.tabBtn,
+        ...(active ? entryStyles.tabBtnActive : {}),
+        ...(disabled ? entryStyles.tabBtnDisabled : {}),
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ============================
+ * Modal de configuration de la fiche
+ * ============================ */
+
+function NoteConfigModal({ initialConfig, onClose, onSave }) {
+  const [subjectLabel, setSubjectLabel] = useState(initialConfig.subjectLabel || "");
+  const [session, setSession] = useState(initialConfig.session || "normale");
+  const [scaleMax, setScaleMax] = useState(String(initialConfig.scaleMax || 20));
+
+  const submit = () => {
+    const max = Number(scaleMax);
+    if (!subjectLabel.trim()) {
+      alert("Veuillez saisir le nom de la matière.");
+      return;
+    }
+    if (Number.isNaN(max) || max <= 0) {
+      alert("L’échelle maximale doit être un nombre positif.");
+      return;
+    }
+    onSave({
+      subjectLabel: subjectLabel.trim(),
+      session,
+      scaleMax: max,
+    });
+  };
+
+  const inputStyle = {
+    width: "100%",
+    height: 40,
+    borderRadius: 10,
+    border: "1px solid var(--border)",
+    padding: "0 0.75rem",
+    fontSize: ".9rem",
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={modalStyles.overlay} onMouseDown={onClose}>
+      <div
+        style={modalStyles.modal}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h3 style={modalStyles.title}>Configurer la fiche de notes</h3>
+        <p style={modalStyles.subtitle}>
+          Choisissez la matière, le type de session et l&apos;échelle des notes.
+        </p>
+
+        <div style={modalStyles.body}>
+          <div style={modalStyles.field}>
+            <label style={modalStyles.label}>Matière *</label>
+            <input
+              style={inputStyle}
+              placeholder="Ex : RDM I, Maths appliquées, Droit civil…"
+              value={subjectLabel}
+              onChange={(e) => setSubjectLabel(e.target.value)}
+            />
+          </div>
+
+          <div style={modalStyles.field}>
+            <label style={modalStyles.label}>Session</label>
+            <select
+              style={inputStyle}
+              value={session}
+              onChange={(e) => setSession(e.target.value)}
+            >
+              <option value="normale">Session normale</option>
+              <option value="rattrapage">Session de rattrapage</option>
+            </select>
+          </div>
+
+          <div style={modalStyles.field}>
+            <label style={modalStyles.label}>Échelle maximale</label>
+            <input
+              type="number"
+              min={1}
+              max={100}
+              style={inputStyle}
+              value={scaleMax}
+              onChange={(e) => setScaleMax(e.target.value)}
+            />
+            <small style={modalStyles.hint}>Par défaut : 20</small>
+          </div>
+        </div>
+
+        <div style={modalStyles.footer}>
+          <button type="button" style={modalStyles.btnGhost} onClick={onClose}>
+            Annuler
+          </button>
+          <button type="button" style={modalStyles.btnPrimary} onClick={submit}>
+            Valider
           </button>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
 /* ============================
- * Fiches de notes (plusieurs pages) - SANS EN-TÊTE DANS L'INTERFACE
- * ============================ */
-
-function NotesSheetPreview({ groups, getSpecialiteDisplay, exportGroupToPDF }) {
-  if (!groups || groups.length === 0) {
-    return (
-      <section>
-        <h2 style={sheetStyles.sectionTitle}>Prévisualisation des fiches</h2>
-        <div style={sheetStyles.wrapper}>
-          <p style={{ fontSize: ".8rem", color: "#6B7280" }}>
-            Aucun étudiant pour les filtres sélectionnés.
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section>
-      <div style={sheetStyles.sectionHeader}>
-        <h2 style={sheetStyles.sectionTitle}>Prévisualisation des fiches</h2>
-        <p style={sheetStyles.sectionSubtitle}>
-          Cliquez sur "Imprimer cette fiche" pour ouvrir une version imprimable d'une seule fiche
-        </p>
-      </div>
-      <div style={sheetStyles.wrapper}>
-        <div style={sheetStyles.pagesContainer}>
-          {groups.map((group, index) => (
-            <div key={group.key || index} style={sheetStyles.pageContainer}>
-              <div style={sheetStyles.pageActions}>
-                <button
-                  type="button"
-                  style={sheetStyles.printBtn}
-                  onClick={() => exportGroupToPDF(group)}
-                >
-                  <Printer size={14} />
-                  <span>Imprimer cette fiche</span>
-                </button>
-              </div>
-              <div style={sheetStyles.page}>
-                <h3 style={sheetStyles.pageTitle}>
-                  {group.academicYear || "Année académique"} - {getSpecialiteDisplay(group)}
-                </h3>
-                <p style={sheetStyles.pageSubtitle}>
-                  Niveau: {group.studyYear ? `Niveau ${group.studyYear}` : "Non spécifié"}
-                </p>
-                
-                <table style={sheetStyles.table}>
-                  <thead>
-                    <tr>
-                      <th style={sheetStyles.thN}>N°</th>
-                      <th style={sheetStyles.thMatricule}>Matricule</th>
-                      <th style={sheetStyles.thName}>Noms et prénoms</th>
-                      <th style={sheetStyles.thNote}>
-                        <div>CC</div>
-                        <div>/ 20</div>
-                      </th>
-                      <th style={sheetStyles.thNote}>
-                        <div>SN</div>
-                        <div>/ 20</div>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.students.map((s, idx) => (
-                      <tr key={s.id || idx}>
-                        <td style={sheetStyles.tdCenter}>{idx + 1}</td>
-                        <td style={sheetStyles.tdCenter}>
-                          {s.matricule || "\u00A0"}
-                        </td>
-                        <td style={sheetStyles.tdLeft}>
-                          {formatFullName(s.lastName, s.firstName)}
-                        </td>
-                        <td style={sheetStyles.tdCenter} />
-                        <td style={sheetStyles.tdCenter} />
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div style={sheetStyles.footerRow}>
-                  Nom, date et signature de l&apos;enseignant :
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ============================
- * Fonctions pour générer le HTML PDF avec en-tête et couronnes
- * ============================ */
-
-function generatePDFHTML(group, getSpecialiteDisplay, isClassRepresentativeRole) {
-  const logoSrc = "/assets/ipmbtpe-logo.png";
-  
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Fiche de report de notes - ${group.academicYear || ''} - ${getSpecialiteDisplay(group)}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 10mm 10mm 15mm 10mm; /* MARGES AUGMENTÉES à 10mm (au lieu de 16mm) */
-    }
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #fff;
-      color: #000;
-      font-size: 12px;
-    }
-    .page {
-      width: 210mm;
-      min-height: 297mm;
-      padding: 0;
-      box-sizing: border-box;
-      page-break-after: always;
-    }
-    .header-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding-bottom: 6px;
-      margin-bottom: 8px;
-    }
-    .header-logo-box img {
-      width: 110px;
-      height: auto;
-    }
-    .header-text-box {
-      flex: 1;
-      text-align: center;
-    }
-    .school-name {
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.3;
-      margin-bottom: 3px;
-    }
-    .school-subtitle {
-      font-size: 10px;
-      font-weight: 700;
-      font-style: italic;
-      margin-bottom: 2px;
-    }
-    .school-contact {
-      font-size: 10px;
-    }
-    .header-underline {
-      border-bottom: 3px solid #00b89c;
-      margin: 5px 0 12px 0;
-    }
-    .meta-block {
-      margin: 10px 0;
-      font-size: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-    }
-    .meta-label {
-      font-weight: 700;
-    }
-    .meta-value {
-      font-weight: 400;
-    }
-    .center-title {
-      text-align: center;
-      font-weight: 800;
-      font-size: 16px;
-      text-decoration: underline;
-      margin: 15px 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 12px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    th, td {
-      border: 1px solid #000;
-      padding: 5px;
-      text-align: center;
-      vertical-align: middle;
-      height: 25px;
-    }
-    .th-matiere {
-      text-align: left;
-      font-weight: bold;
-      border: 1px solid #000;
-      padding: 6px 10px;
-    }
-    .th-n {
-      width: 30px;
-    }
-    .th-matricule {
-      width: 87px; /* RÉDUIT DE 3px (de 90px à 87px) */
-    }
-    .th-name {
-      text-align: left;
-      padding-left: 6px;
-      width: 182px; /* RÉDUIT DE 3px (de 185px à 182px) */
-    }
-    .th-note {
-      width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
-      line-height: 1.2;
-      padding: 2px 4px;
-    }
-    .th-note div {
-      font-size: 10px;
-    }
-    .td-left {
-      text-align: left;
-      padding-left: 6px;
-    }
-    .crown {
-      color: #FF8200;
-      font-weight: bold;
-      margin-left: 4px;
-    }
-    .footer-row {
-      margin-top: 20px;
-      border-top: 1px solid #000;
-      padding-top: 8px;
-      font-size: 12px;
-      text-align: right;
-    }
-  </style>
-</head>
-<body>
-  <div class="page">
-    <div class="header-row">
-      <div class="header-logo-box">
-        <img src="${logoSrc}" alt="IPMBTPE" />
-      </div>
-      <div class="header-text-box">
-        <div class="school-name">
-          INSTITUT POLYTECHNIQUE DES MÉTIERS DU BÂTIMENT,<br />
-          TRAVAUX PUBLICS ET DE L'ENTREPRENEURIAT
-        </div>
-        <div class="school-subtitle">
-          ARRÊTÉ N° ORDERN 25-01077 / MINESUP / SG / DDES / SDESUP / SDA / AOS du 26 Mars 2025
-        </div>
-        <div class="school-contact">
-          BP : 16398 Mfou / Tél : (+237) 696 79 58 05 - 672 83 80 94 · Site web : www.ipmbtpe.cm · E-mail : ipmbtpe@gmail.com
-        </div>
-      </div>
-    </div>
-    <div class="header-underline"></div>
-
-    <div class="meta-block">
-      <div class="meta-row">
-        <div>
-          <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
-        </div>
-        <div>
-          <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
-        </div>
-      </div>
-      <div class="meta-row">
-        <div>
-          <span class="meta-label">Spécialité :</span> ${getSpecialiteDisplay(group)}
-        </div>
-      </div>
-    </div>
-
-    <div class="center-title">FICHE DE REPORT DE NOTES</div>
-
-    <table>
-      <thead>
-        <tr>
-          <th class="th-matiere" colspan="5">Matière :</th>
-        </tr>
-        <tr>
-          <th class="th-n">N°</th>
-          <th class="th-matricule">Matricule</th>
-          <th class="th-name">Noms et prénoms</th>
-          <th class="th-note">
-            <div>CC</div>
-            <div>/ 20</div>
-          </th>
-          <th class="th-note">
-            <div>SN</div>
-            <div>/ 20</div>
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        ${group.students.map((s, idx) => {
-          const isChief = isClassRepresentativeRole(s.classRole);
-          return `
-            <tr>
-              <td>${idx + 1}</td>
-              <td>${s.matricule || ''}</td>
-              <td class="td-left">
-                ${formatFullName(s.lastName, s.firstName)}
-                ${isChief ? '<span class="crown">👑</span>' : ''}
-              </td>
-              <td></td>
-              <td></td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-
-    <div class="footer-row">
-      Nom, date et signature de l'enseignant :
-    </div>
-  </div>
-  
-  <script>
-    window.onload = function() {
-      window.print();
-      setTimeout(function() {
-        window.close();
-      }, 500);
-    };
-  </script>
-</body>
-</html>
-`;
-}
-
-function generateAllPDFsHTML(groups, getSpecialiteDisplay, isClassRepresentativeRole) {
-  const logoSrc = "/assets/ipmbtpe-logo.png";
-  
-  const pagesHTML = groups.map(group => `
-    <div class="page">
-      <div class="header-row">
-        <div class="header-logo-box">
-          <img src="${logoSrc}" alt="IPMBTPE" />
-        </div>
-        <div class="header-text-box">
-          <div class="school-name">
-            INSTITUT POLYTECHNIQUE DES MÉTIERS DU BÂTIMENT,<br />
-            TRAVAUX PUBLICS ET DE L'ENTREPRENEURIAT
-          </div>
-          <div class="school-subtitle">
-            ARRÊTÉ N° ORDERN 25-01077 / MINESUP / SG / DDES / SDESUP / SDA / AOS du 26 Mars 2025
-          </div>
-          <div class="school-contact">
-            BP : 16398 Mfou / Tél : (+237) 696 79 58 05 - 672 83 80 94 · Site web : www.ipmbtpe.cm · E-mail : ipmbtpe@gmail.com
-          </div>
-        </div>
-      </div>
-      <div class="header-underline"></div>
-
-      <div class="meta-block">
-        <div class="meta-row">
-          <div>
-            <span class="meta-label">Année académique :</span> ${group.academicYear || '—'}
-          </div>
-          <div>
-            <span class="meta-label">Niveau :</span> ${group.studyYear ? `Niveau ${group.studyYear}` : '—'}
-          </div>
-        </div>
-        <div class="meta-row">
-          <div>
-            <span class="meta-label">Spécialité :</span> ${getSpecialiteDisplay(group)}
-          </div>
-        </div>
-      </div>
-
-      <div class="center-title">FICHE DE REPORT DE NOTES</div>
-
-      <table>
-        <thead>
-          <tr>
-            <th class="th-matiere" colspan="5">Matière :</th>
-          </tr>
-          <tr>
-            <th class="th-n">N°</th>
-            <th class="th-matricule">Matricule</th>
-            <th class="th-name">Noms et prénoms</th>
-            <th class="th-note">
-              <div>CC</div>
-              <div>/ 20</div>
-            </th>
-            <th class="th-note">
-              <div>SN</div>
-              <div>/ 20</div>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          ${group.students.map((s, idx) => {
-            const isChief = isClassRepresentativeRole(s.classRole);
-            return `
-              <tr>
-                <td>${idx + 1}</td>
-                <td>${s.matricule || ''}</td>
-                <td class="td-left">
-                  ${formatFullName(s.lastName, s.firstName)}
-                  ${isChief ? '<span class="crown">👑</span>' : ''}
-                </td>
-                <td></td>
-                <td></td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-
-      <div class="footer-row">
-        Nom, date et signature de l'enseignant :
-      </div>
-    </div>
-    <div style="page-break-after: always;"></div>
-  `).join('');
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Fiches de notes - ${groups[0]?.academicYear || 'Toutes classes'}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 10mm 10mm 15mm 10mm; /* MARGES AUGMENTÉES à 10mm (au lieu de 16mm) */
-    }
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: #fff;
-      color: #000;
-      font-size: 12px;
-    }
-    .page {
-      width: 210mm;
-      min-height: 297mm;
-      padding: 0;
-      box-sizing: border-box;
-      page-break-after: always;
-    }
-    .header-row {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding-bottom: 6px;
-      margin-bottom: 8px;
-    }
-    .header-logo-box img {
-      width: 110px;
-      height: auto;
-    }
-    .header-text-box {
-      flex: 1;
-      text-align: center;
-    }
-    .school-name {
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.3;
-      margin-bottom: 3px;
-    }
-    .school-subtitle {
-      font-size: 10px;
-      font-weight: 700;
-      font-style: italic;
-      margin-bottom: 2px;
-    }
-    .school-contact {
-      font-size: 10px;
-    }
-    .header-underline {
-      border-bottom: 3px solid #00b89c;
-      margin: 5px 0 12px 0;
-    }
-    .meta-block {
-      margin: 10px 0;
-      font-size: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-    }
-    .meta-label {
-      font-weight: 700;
-    }
-    .meta-value {
-      font-weight: 400;
-    }
-    .center-title {
-      text-align: center;
-      font-weight: 800;
-      font-size: 16px;
-      text-decoration: underline;
-      margin: 15px 0;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 12px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    th, td {
-      border: 1px solid #000;
-      padding: 5px;
-      text-align: center;
-      vertical-align: middle;
-      height: 25px;
-    }
-    .th-matiere {
-      text-align: left;
-      font-weight: bold;
-      border: 1px solid #000;
-      padding: 6px 10px;
-    }
-    .th-n {
-      width: 30px;
-    }
-    .th-matricule {
-      width: 87px; /* RÉDUIT DE 3px (de 90px à 87px) */
-    }
-    .th-name {
-      text-align: left;
-      padding-left: 6px;
-      width: 182px; /* RÉDUIT DE 3px (de 185px à 182px) */
-    }
-    .th-note {
-      width: 45px; /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
-      line-height: 1.2;
-      padding: 2px 4px;
-    }
-    .th-note div {
-      font-size: 10px;
-    }
-    .td-left {
-      text-align: left;
-      padding-left: 6px;
-    }
-    .crown {
-      color: #FF8200;
-      font-weight: bold;
-      margin-left: 4px;
-    }
-    .footer-row {
-      margin-top: 20px;
-      border-top: 1px solid #000;
-      padding-top: 8px;
-      font-size: 12px;
-      text-align: right;
-    }
-  </style>
-</head>
-<body>
-  ${pagesHTML}
-  
-  <script>
-    window.onload = function() {
-      window.print();
-    };
-  </script>
-</body>
-</html>
-`;
-}
-
-/* ============================
- * Helpers & styles
+ * Helpers généraux
  * ============================ */
 
 function buildAcademicYears() {
@@ -945,7 +729,9 @@ function formatFullName(lastName, firstName) {
   return `${last} ${first}`.trim();
 }
 
-/* ====== Styles ====== */
+/* ============================
+ * Styles
+ * ============================ */
 
 const styles = {
   layout: {
@@ -993,11 +779,12 @@ const headerStyles = {
   },
   left: { flex: 1, minWidth: 0 },
   right: {
-    flex: 1.2,
+    flex: 1.3,
     minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    gap: "0.5rem",
+    gap: "0.75rem",
+    alignItems: "flex-end",
   },
   title: {
     margin: 0,
@@ -1019,10 +806,21 @@ const headerStyles = {
     color: "#0369A1",
     border: "1px solid #7DD3FC",
   },
+  classInfo: {
+    marginTop: 6,
+    fontSize: ".8rem",
+    color: "#4B5563",
+  },
+  subjectInfo: {
+    marginTop: 2,
+    fontSize: ".8rem",
+    color: "#111827",
+  },
   filtersRow: {
     display: "flex",
     gap: ".5rem",
     flexWrap: "wrap",
+    width: "100%",
   },
   field: {
     display: "flex",
@@ -1036,17 +834,18 @@ const headerStyles = {
     fontWeight: 600,
     color: "var(--ip-gray)",
   },
-  exportButtons: {
+  topButtons: {
     display: "flex",
-    gap: "0.5rem",
-    marginTop: "0.5rem",
-    flexWrap: "wrap",
+    flexDirection: "column",
+    gap: ".5rem",
+    alignItems: "flex-end",
+    width: "100%",
   },
-  exportBtnPrimary: {
+  configBtn: {
     display: "inline-flex",
     alignItems: "center",
-    gap: "6px",
-    padding: "8px 16px",
+    gap: 8,
+    padding: "8px 14px",
     borderRadius: 999,
     border: "none",
     background: "#00b89c",
@@ -1054,132 +853,314 @@ const headerStyles = {
     fontSize: ".85rem",
     fontWeight: 600,
     cursor: "pointer",
-    transition: "background 0.2s",
+  },
+  actionsRow: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  smallBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "#fff",
+    color: "#374151",
+    fontSize: ".8rem",
+    cursor: "default",
+  },
+  lockBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "none",
+    background: "#00b89c",
+    color: "#fff",
+    fontSize: ".8rem",
+    fontWeight: 600,
+    cursor: "default",
   },
 };
 
-const sheetStyles = {
-  sectionHeader: {
-    marginBottom: "0.5rem",
+const entryStyles = {
+  card: {
+    background: "#fff",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    padding: "1rem 1.25rem 0.75rem",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.75rem",
   },
-  sectionTitle: {
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+  title: {
     margin: 0,
-    fontSize: ".9rem",
+    fontSize: "1rem",
     fontWeight: 600,
-    color: "var(--ip-gray)",
   },
-  sectionSubtitle: {
+  subtitle: {
     margin: "4px 0 0",
     fontSize: ".8rem",
     color: "#6B7280",
   },
-  wrapper: {
-    marginTop: "0.5rem",
-    padding: "0.75rem",
-    background: "#E5E7EB",
-    borderRadius: 12,
-    overflowX: "auto",
-  },
-  pagesContainer: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "24px",
-  },
-  pageContainer: {
-    position: "relative",
-  },
-  pageActions: {
-    position: "absolute",
-    top: "-28px",
-    right: "10px",
-    zIndex: 10,
-  },
-  printBtn: {
+  tabsRow: {
+    marginTop: 4,
     display: "inline-flex",
-    alignItems: "center",
-    gap: "4px",
+    gap: 6,
+    padding: 4,
+    borderRadius: 999,
+    background: "#F3F4F6",
+  },
+  tabBtn: {
+    border: "none",
+    background: "transparent",
     padding: "4px 10px",
     borderRadius: 999,
-    border: "1px solid #00b89c",
-    background: "white",
-    color: "#00b89c",
-    fontSize: ".75rem",
-    fontWeight: 600,
+    fontSize: ".8rem",
     cursor: "pointer",
-    transition: "background 0.2s",
+    color: "#4B5563",
   },
-  page: {
-    width: "760px",
-    minHeight: "1080px",
-    margin: "0 auto",
-    background: "#ffffff",
-    border: "1px solid #111827",
-    padding: "18px 22px",
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    gap: "10px",
+  tabBtnActive: {
+    background: "#fff",
+    boxShadow: "0 0 0 1px rgba(0,0,0,0.06)",
+    color: "#111827",
+    fontWeight: 600,
   },
-  pageTitle: {
-    margin: 0,
-    fontSize: "1rem",
-    fontWeight: 700,
+  tabBtnDisabled: {
+    opacity: 0.5,
+    cursor: "not-allowed",
   },
-  pageSubtitle: {
-    margin: "4px 0 10px 0",
-    fontSize: ".85rem",
-    color: "#6B7280",
+  tableWrapper: {
+    marginTop: 8,
+    borderRadius: 12,
+    border: "1px solid #E5E7EB",
+    overflow: "hidden",
   },
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    marginTop: 8,
-    fontSize: "0.8rem",
-    marginLeft: "auto",
-    marginRight: "auto",
+    fontSize: ".85rem",
   },
-  thN: {
-    border: "1px solid #000",
-    padding: "4px 4px",
-    width: "28px",
-    textAlign: "center",
+  thIndex: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "left",
+    width: 40,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
   thMatricule: {
-    border: "1px solid #000",
-    padding: "4px 4px",
-    width: "77px", /* RÉDUIT DE 3px (de 80px à 77px) */
-    textAlign: "center",
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "left",
+    width: 190,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
   thName: {
-    border: "1px solid #000",
-    padding: "4px 4px",
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
     textAlign: "left",
-    width: "182px", /* RÉDUIT DE 3px (de 185px à 182px) */
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
   thNote: {
-    border: "1px solid #000",
-    padding: "2px 4px",
-    width: "45px", /* COLONNES RÉDUITES à 45px (au lieu de 65px) */
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
     textAlign: "center",
-    fontSize: "0.75rem",
-    lineHeight: "1.2",
+    width: 120,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
-  tdCenter: {
-    border: "1px solid #000",
-    padding: "3px 4px",
+  thMention: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
     textAlign: "center",
-    height: "20px",
+    width: 120,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
-  tdLeft: {
-    border: "1px solid #000",
-    padding: "3px 4px",
-    textAlign: "left",
+  thStatus: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "center",
+    width: 120,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
+  },
+  tdIndex: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".8rem",
+    color: "#6B7280",
+  },
+  tdMatricule: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".8rem",
+    color: "#111827",
+    whiteSpace: "nowrap",
+  },
+  tdName: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".85rem",
+    color: "#111827",
+  },
+  tdNote: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    textAlign: "center",
+  },
+  tdMention: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    textAlign: "center",
+    fontSize: ".8rem",
+    color: "#4B5563",
+  },
+  tdStatus: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    textAlign: "center",
+    fontSize: ".8rem",
+    color: "#4B5563",
+  },
+  noteInput: {
+    width: 80,
+    height: 32,
+    borderRadius: 8,
+    border: "1px solid #D1D5DB",
+    background: "#F9FAFB",
+    textAlign: "center",
+    fontSize: ".85rem",
+    outline: "none",
+  },
+  emptyState: {
+    padding: "10px 12px",
+    fontSize: ".8rem",
+    color: "#6B7280",
   },
   footerRow: {
-    marginTop: 18,
-    borderTop: "1px solid #000",
-    paddingTop: 6,
-    fontSize: "0.8rem",
-    textAlign: "right",
+    padding: "0.75rem 0.25rem 0.75rem",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  btnGhost: {
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "#fff",
+    color: "#111827",
+    padding: "0.5rem 1rem",
+    fontSize: ".85rem",
+    cursor: "pointer",
+  },
+  btnPrimary: {
+    borderRadius: 999,
+    border: "none",
+    background: "#00b89c",
+    color: "#fff",
+    padding: "0.5rem 1.2rem",
+    fontSize: ".85rem",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+};
+
+const modalStyles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,.35)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "1rem",
+    zIndex: 60,
+  },
+  modal: {
+    width: "min(460px, 96vw)",
+    background: "var(--bg)",
+    color: "var(--fg)",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    boxShadow: "0 16px 40px rgba(0,0,0,.2)",
+    padding: "1rem 1.25rem 0.75rem",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.75rem",
+  },
+  title: {
+    margin: 0,
+    fontSize: "1rem",
+    fontWeight: 700,
+  },
+  subtitle: {
+    margin: "4px 0 0",
+    fontSize: ".8rem",
+    color: "var(--ip-gray)",
+  },
+  body: {
+    marginTop: 8,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  label: {
+    fontSize: ".8rem",
+    fontWeight: 600,
+    color: "#4B5563",
+  },
+  hint: {
+    fontSize: ".75rem",
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  footer: {
+    marginTop: 8,
+    borderTop: "1px solid var(--border)",
+    paddingTop: 8,
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  btnGhost: {
+    borderRadius: 999,
+    border: "1px solid var(--border)",
+    background: "#fff",
+    color: "#111827",
+    padding: "0.45rem 1rem",
+    fontSize: ".85rem",
+    cursor: "pointer",
+  },
+  btnPrimary: {
+    borderRadius: 999,
+    border: "none",
+    background: "#00b89c",
+    color: "#fff",
+    padding: "0.45rem 1.1rem",
+    fontSize: ".85rem",
+    fontWeight: 600,
+    cursor: "pointer",
   },
 };
