@@ -27,7 +27,7 @@ export default function NotesHeader() {
             <br />
             des Travaux Publics et de l’Entrepreneuriat
           </div>
-          <div style={sx.tagline}>Votre carrière commence ici</div>
+          {/* <div style={sx.tagline}>Votre carrière commence ici</div> */}
           <div style={sx.legalLine}>
             Autorisation d’ouverture N°25-01077/MINESUP/SG/DDES/SD-ESUP/SDA/AOS
             du 26 mars 2025

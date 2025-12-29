@@ -8,11 +8,12 @@ import {
   Download,
   Image as ImageIcon,
   IdCard,
-  Users, // icône pour la classe
+  Users,
 } from "lucide-react";
 import { colors } from "../styles/theme";
 import StudentBadgeSheet from "../components/documents/StudentBadgeSheet.jsx";
 import ClassNotesBlankSheet from "../components/documents/ClassNotesBlankSheet.jsx";
+import ClassDechargeBlankSheet from "../components/documents/ClassDechargeBlankSheet.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -31,6 +32,9 @@ export default function DocumentsPage({
 
   // fiche de report de notes (classe)
   const [showNotesSheetModal, setShowNotesSheetModal] = useState(false);
+
+  // ✅ fiche de décharge (classe)
+  const [showDechargeSheetModal, setShowDechargeSheetModal] = useState(false);
 
   // liste complète (chargée seulement quand on clique “Ajouter sa classe”)
   const [allStudents, setAllStudents] = useState([]);
@@ -200,7 +204,7 @@ export default function DocumentsPage({
             <header style={{ marginBottom: "1.25rem" }}>
               <h1 style={styles.title}>Génération de documents</h1>
               <p style={styles.subtitle}>
-                Certificats, relevés, cartes et fiches de notes.
+                Certificats, relevés, cartes et fiches.
               </p>
             </header>
 
@@ -377,13 +381,23 @@ export default function DocumentsPage({
                   accent="orange"
                 />
 
-                {/* NOUVELLE CARTE : FICHE DE REPORT DE NOTES */}
+                {/* FICHE DE REPORT DE NOTES */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
                   title="Fiche de report de notes (classe)"
-                  description="Générer une fiche vierge par classe pour CC / 20 et SN / 20."
+                  description="Fiche vierge par classe avec CC / 20 et SN / 20."
                   disabled={false}
                   onClick={() => setShowNotesSheetModal(true)}
+                  accent="teal"
+                />
+
+                {/* ✅ NOUVELLE CARTE : FICHE DE DÉCHARGE */}
+                <DocumentTile
+                  icon={<FileText size={20} color="#2563EB" />}
+                  title="Fiche de décharge (classe)"
+                  description="Fiche par classe avec colonne signature pour remise de copie (1 page par matière)."
+                  disabled={false}
+                  onClick={() => setShowDechargeSheetModal(true)}
                   accent="teal"
                 />
               </div>
@@ -391,8 +405,8 @@ export default function DocumentsPage({
               {!isStudentSelected && (
                 <p style={styles.infoText}>
                   Pour les documents individuels (certificat, carte, badge),
-                  sélectionnez d&apos;abord un étudiant. La fiche de report de
-                  notes fonctionne par classe.
+                  sélectionnez d&apos;abord un étudiant. Les fiches “classe”
+                  fonctionnent par classe.
                 </p>
               )}
             </section>
@@ -408,9 +422,11 @@ export default function DocumentsPage({
       )}
 
       {showNotesSheetModal && (
-        <ClassNotesBlankSheet
-          onClose={() => setShowNotesSheetModal(false)}
-        />
+        <ClassNotesBlankSheet onClose={() => setShowNotesSheetModal(false)} />
+      )}
+
+      {showDechargeSheetModal && (
+        <ClassDechargeBlankSheet onClose={() => setShowDechargeSheetModal(false)} />
       )}
     </div>
   );

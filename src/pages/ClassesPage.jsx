@@ -255,10 +255,8 @@ function exportClassToPDF(cls) {
   </div>
 
   <script>
-    // Lancer l'impression dès que la page est prête
     window.onload = () => {
       window.print();
-      // optionnel : fermer après impression
       setTimeout(() => window.close(), 300);
     };
   </script>
@@ -473,14 +471,13 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
   w.document.close();
 }
 
-
-export default function ClassesPage({
-  currentSection = "classes",
-  onNavigate,
-}) {
+export default function ClassesPage({ currentSection = "classes", onNavigate }) {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]); // pour stats
   const [loading, setLoading] = useState(false);
+
+  // ✅ AJOUT UNIQUE: année académique + passage du paramètre year au fetch /classes
+  const [academicYear, setAcademicYear] = useState("2025-2026");
 
   const [search, setSearch] = useState("");
   const [filiereFilter, setFiliereFilter] = useState("all");
@@ -492,7 +489,10 @@ export default function ClassesPage({
   const loadData = async () => {
     setLoading(true);
     try {
-      const resClasses = await fetch(`${API_BASE}/classes`);
+      // ✅ CHANGE MINIMUM: ajouter ?year=...
+      const resClasses = await fetch(
+        `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
+      );
       const dataClasses = await resClasses.json();
       setClasses(Array.isArray(dataClasses) ? dataClasses : []);
 
@@ -508,9 +508,11 @@ export default function ClassesPage({
     }
   };
 
+  // ✅ CHANGE MINIMUM: reload si l’année change (sinon inchangé)
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academicYear]);
 
   const filteredClasses = useMemo(() => {
     const normSearch = search.trim().toLowerCase();
@@ -597,7 +599,9 @@ export default function ClassesPage({
     }
 
     const file = sanitizeFileName(
-      `classes_${cycleFilter}_${bulkLevel}_${new Date().toISOString().slice(0,10)}`
+      `classes_${cycleFilter}_${bulkLevel}_${new Date()
+        .toISOString()
+        .slice(0, 10)}`
     );
 
     downloadCSV(`${file}.csv`, rows);
@@ -621,10 +625,7 @@ export default function ClassesPage({
     <div style={sx.layout}>
       {/* Colonne gauche */}
       <aside style={sx.left}>
-        <VerticalNavBar
-          currentSection={currentSection}
-          onNavigate={onNavigate}
-        />
+        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
       </aside>
 
       {/* Colonne droite */}
@@ -641,6 +642,19 @@ export default function ClassesPage({
                 </p>
               </div>
             </header>
+
+            {/* ✅ AJOUT UNIQUE UI: champ année (le reste inchangé) */}
+            <section style={sx.filtersCard}>
+              <p style={sx.filtersTitle}>Année académique</p>
+              <div style={{ marginTop: 10, maxWidth: 260 }}>
+                <input
+                  style={sx.searchInput}
+                  value={academicYear}
+                  onChange={(e) => setAcademicYear(e.target.value)}
+                  placeholder="Ex: 2025-2026"
+                />
+              </div>
+            </section>
 
             {/* STAT CARDS */}
             <section style={sx.statsRow}>
@@ -871,9 +885,7 @@ function ClassCard({ cls }) {
               {s.schoolRole !== "Aucune" && (
                 <RoleBadge label={s.schoolRole} color={colors.teal} />
               )}
-              {s.contact && (
-                <span style={sx.repPhone}>{s.contact}</span>
-              )}
+              {s.contact && <span style={sx.repPhone}>{s.contact}</span>}
             </div>
           </div>
         ))}
@@ -1163,7 +1175,7 @@ const sx = {
     alignItems: "center",
     justifyContent: "space-between",
     padding: "6px 0",
-    borderBottom: `1px dashed ${colors.border}`,
+    borderBottom: `1px solid ${colors.border}`,
     gap: 8,
   },
   repName: { margin: 0, fontSize: ".85rem", fontWeight: 600 },
