@@ -15,6 +15,9 @@ import StudentBadgeSheet from "../components/documents/StudentBadgeSheet.jsx";
 import ClassNotesBlankSheet from "../components/documents/ClassNotesBlankSheet.jsx";
 import ClassDechargeBlankSheet from "../components/documents/ClassDechargeBlankSheet.jsx";
 
+// ✅ NOUVEAU : Liste des notes (classe) avec filtres (année/classe/semestre/examen/session)
+import ClassNotesMatrixSheet from "../components/documents/ClassNotesMatrixSheet.jsx";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export default function DocumentsPage({
@@ -36,6 +39,9 @@ export default function DocumentsPage({
   // ✅ fiche de décharge (classe)
   const [showDechargeSheetModal, setShowDechargeSheetModal] = useState(false);
 
+  // ✅ NOUVEAU : liste notes (classe) A4 paysage + filtres
+  const [showNotesMatrixModal, setShowNotesMatrixModal] = useState(false);
+
   // liste complète (chargée seulement quand on clique “Ajouter sa classe”)
   const [allStudents, setAllStudents] = useState([]);
   const [allStudentsLoading, setAllStudentsLoading] = useState(false);
@@ -50,9 +56,7 @@ export default function DocumentsPage({
     }
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/students?q=${encodeURIComponent(q)}`
-      );
+      const res = await fetch(`${API_BASE}/students?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
       setSearchResults(arr);
@@ -264,9 +268,7 @@ export default function DocumentsPage({
                 <div style={styles.resultsList}>
                   {searchResults.map((s) => {
                     const active = selectedStudent?.id === s.id;
-                    const inBadges = !!badgeSelection.find(
-                      (b) => b.id === s.id
-                    );
+                    const inBadges = !!badgeSelection.find((b) => b.id === s.id);
                     return (
                       <div
                         key={s.id}
@@ -306,9 +308,7 @@ export default function DocumentsPage({
                           type="button"
                           style={{
                             ...styles.badgeSelectBtn,
-                            backgroundColor: inBadges
-                              ? "#059669"
-                              : "#F3F4F6",
+                            backgroundColor: inBadges ? "#059669" : "#F3F4F6",
                             color: inBadges ? "#ffffff" : "#374151",
                           }}
                           onClick={() => toggleBadgeStudent(s)}
@@ -391,13 +391,23 @@ export default function DocumentsPage({
                   accent="teal"
                 />
 
-                {/* ✅ NOUVELLE CARTE : FICHE DE DÉCHARGE */}
+                {/* FICHE DE DÉCHARGE */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
                   title="Fiche de décharge (classe)"
-                  description="Fiche par classe avec colonne signature pour remise de copie (1 page par matière)."
+                  description="Fiche par classe avec colonne signature pour remise de copie."
                   disabled={false}
                   onClick={() => setShowDechargeSheetModal(true)}
+                  accent="teal"
+                />
+
+                {/* ✅ NOUVEAU : LISTE DES NOTES (CLASSE) */}
+                <DocumentTile
+                  icon={<FileText size={20} color="#2563EB" />}
+                  title="Liste des notes (classe) — A4 paysage"
+                  description="Filtres (année, classe, semestre, examen, session) + colonnes matières détectées."
+                  disabled={false}
+                  onClick={() => setShowNotesMatrixModal(true)}
                   accent="teal"
                 />
               </div>
@@ -426,7 +436,14 @@ export default function DocumentsPage({
       )}
 
       {showDechargeSheetModal && (
-        <ClassDechargeBlankSheet onClose={() => setShowDechargeSheetModal(false)} />
+        <ClassDechargeBlankSheet
+          onClose={() => setShowDechargeSheetModal(false)}
+        />
+      )}
+
+      {/* ✅ NOUVEAU MODAL */}
+      {showNotesMatrixModal && (
+        <ClassNotesMatrixSheet onClose={() => setShowNotesMatrixModal(false)} />
       )}
     </div>
   );
