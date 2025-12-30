@@ -31,6 +31,9 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const [notes, setNotes] = useState({}); // { studentKey: "12.5" }
   const [locked, setLocked] = useState(false); // verrouillage de la session principale
 
+  // ✅ NEW: ligne active (étudiant en cours de saisie)
+  const [activeStudentKey, setActiveStudentKey] = useState("");
+
   // -------------------------
   // Charger classes
   // -------------------------
@@ -45,10 +48,13 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
         // ✅ accepte: [] OU {classes:[]} OU {data:[]}
         const list =
-          Array.isArray(data) ? data :
-          Array.isArray(data?.classes) ? data.classes :
-          Array.isArray(data?.data) ? data.data :
-          [];
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.classes)
+            ? data.classes
+            : Array.isArray(data?.data)
+            ? data.data
+            : [];
 
         setClasses(list);
       } catch (e) {
@@ -81,9 +87,10 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   }, [students]);
 
   // -------------------------
-  // Charger matières liées à la classe (même logique que ClassNotesBlankSheet)
+  // Charger matières liées à la classe
   // -------------------------
-  const getSubjectLabel = (s) => String(s?.label || s?.ueLabel || s?.name || "").trim();
+  const getSubjectLabel = (s) =>
+    String(s?.label || s?.ueLabel || s?.name || "").trim();
 
   useEffect(() => {
     const loadSubjects = async () => {
@@ -96,18 +103,17 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       setLoadingSubjects(true);
       try {
         const classFiliere = selectedClass.filiere || "";
-        const classRefKey = selectedClass.optionCode || selectedClass.specialiteCode || "";
+        const classRefKey =
+          selectedClass.optionCode || selectedClass.specialiteCode || "";
         const classCycle = selectedClass.cycle || "";
-        const classStudyYear = selectedClass.studyYear != null ? String(selectedClass.studyYear) : "";
+        const classStudyYear =
+          selectedClass.studyYear != null ? String(selectedClass.studyYear) : "";
 
         const params = new URLSearchParams();
         if (classFiliere) params.set("filiere", classFiliere);
         if (classRefKey) params.set("specialiteCode", classRefKey);
         if (classCycle) params.set("cycle", classCycle);
         if (classStudyYear) params.set("studyYear", classStudyYear);
-
-        // Optionnel : si tu veux filtrer aussi par année académique côté subject
-        // params.set("academicYear", academicYear);
 
         const res = await fetch(`${API_BASE}/subjects?${params.toString()}`);
         const data = await res.json();
@@ -128,7 +134,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
         uniq.sort((a, b) => String(a.label).localeCompare(String(b.label)));
         setSubjects(uniq);
 
-        // reset sélection matière si plus disponible
         if (uniq.length === 0) setSelectedSubjectId("");
       } catch (e) {
         console.error("Erreur chargement matières:", e);
@@ -148,65 +153,16 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   );
 
   // -------------------------
-  // Charger notes existantes (sheet)
-  // -------------------------
-  useEffect(() => {
-    const loadSheet = async () => {
-      // reset si incomplet
-      setNotes({});
-      setLocked(false);
-
-      if (!selectedClass || !selectedSubject) return;
-
-      setLoading(true);
-      try {
-        const qs = new URLSearchParams({
-          classId: selectedClass.id,
-          academicYear: academicYear || "",
-          semester,
-          examType,
-          sessionType, // main | rattrapage
-          subjectId: selectedSubject.id,
-        });
-
-        const res = await fetch(`${API_BASE}/notes/sheet?${qs.toString()}`);
-        const data = await res.json();
-
-        // data: { locked, notes: { studentKey: { value, final } } }
-        const lockedValue = !!data?.locked;
-        setLocked(lockedValue);
-
-        const map = {};
-        const entries = data?.notes || {};
-        Object.keys(entries).forEach((k) => {
-          map[k] = entries[k]?.value ?? "";
-        });
-        setNotes(map);
-      } catch (e) {
-        console.error("Erreur chargement sheet:", e);
-        setNotes({});
-        setLocked(false);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadSheet();
-  }, [selectedClassId, selectedSubjectId, academicYear, semester, examType, sessionType]);
-
-  // -------------------------
   // Helpers notes
   // -------------------------
   const scaleMax = 20;
-
   const keyForStudent = (s) => s.id || s.matricule || String(s._id || "");
 
+  const isRetake = sessionType === "rattrapage";
+  const mode = isRetake ? "retake" : "main";
+
   const canEdit =
-    !!selectedClass &&
-    !!selectedSubject &&
-    (
-      sessionType === "rattrapage" || !locked // ✅ rattrapage autorisé même si locked
-    );
+    !!selectedClass && !!selectedSubject && (isRetake || !locked);
 
   const handleNoteChange = (student, value) => {
     if (!canEdit) return;
@@ -248,6 +204,79 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   };
 
   // -------------------------
+  // Charger notes existantes (sheet)
+  // -------------------------
+  useEffect(() => {
+    const loadSheet = async () => {
+      setNotes({});
+      setLocked(false);
+      setActiveStudentKey("");
+
+      if (!selectedClass || !selectedSubject) return;
+
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({
+          classId: selectedClass.id,
+          academicYear: academicYear || "",
+          semester,
+          examType,
+          subjectId: selectedSubject.id,
+          subjectLabel: getSubjectLabel(selectedSubject) || "",
+        });
+
+        const res = await fetch(`${API_BASE}/notes/sheet?${qs.toString()}`);
+        const data = await res.json();
+
+        const sheet = data?.sheet || null;
+        if (!sheet) {
+          setNotes({});
+          setLocked(false);
+          return;
+        }
+
+        setLocked(!!sheet.locked);
+
+        const entries = sheet.entries || {};
+        const map = {};
+
+        (sortedStudents || []).forEach((s) => {
+          const k = keyForStudent(s);
+          if (!k) return;
+          const e = entries[k];
+          const val = mode === "retake" ? e?.retake : e?.main;
+          map[k] = val === null || val === undefined ? "" : String(val);
+        });
+
+        Object.keys(entries).forEach((k) => {
+          if (map[k] !== undefined) return;
+          const e = entries[k];
+          const val = mode === "retake" ? e?.retake : e?.main;
+          map[k] = val === null || val === undefined ? "" : String(val);
+        });
+
+        setNotes(map);
+      } catch (e) {
+        console.error("Erreur chargement sheet:", e);
+        setNotes({});
+        setLocked(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadSheet();
+  }, [
+    selectedClassId,
+    selectedSubjectId,
+    academicYear,
+    semester,
+    examType,
+    sessionType,
+    sortedStudents,
+  ]);
+
+  // -------------------------
   // Save notes
   // -------------------------
   const handleSave = async () => {
@@ -269,24 +298,25 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     }
 
     if (!canEdit) {
-      alert("Cette feuille est verrouillée (session principale). Utilisez un rattrapage.");
+      alert(
+        "Cette feuille est verrouillée (session principale). Utilisez un rattrapage."
+      );
       return;
     }
 
-    // payload notes
     const payloadNotes = (sortedStudents || [])
       .map((s) => {
         const key = keyForStudent(s);
         const raw = notes[key];
         if (raw === "" || raw == null) return null;
-        const note = Number(raw);
-        if (Number.isNaN(note)) return null;
+        const value = Number(String(raw).replace(",", "."));
+        if (Number.isNaN(value)) return null;
+
         return {
-          studentKey: key,
           studentId: s.id || null,
           matricule: s.matricule || null,
           fullName: s.fullName || "",
-          note,
+          value,
         };
       })
       .filter(Boolean);
@@ -299,33 +329,43 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     const body = {
       academicYear,
       classId: selectedClass.id,
-      classKey: selectedClass.key || selectedClass.id,
-      filiere: selectedClass.filiere || null,
-      specialiteCode: selectedClass.specialiteCode || null,
-      optionCode: selectedClass.optionCode || null,
-      cycle: selectedClass.cycle || null,
-      studyYear: selectedClass.studyYear ?? null,
-
-      semester,     // S1 | S2
-      examType,     // CC | SN
-      sessionType,  // main | rattrapage
-
+      semester,
+      examType,
       subjectId: selectedSubject.id,
       subjectLabel: getSubjectLabel(selectedSubject),
-
       scaleMax,
+      mode, // main | retake
       notes: payloadNotes,
     };
 
     try {
       setSaving(true);
-      const res = await fetch(`${API_BASE}/notes/save`, {
+
+      const res = await fetch(`${API_BASE}/notes/sheet/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Erreur lors de l’enregistrement.");
+
+      const sheet = data?.sheet || null;
+      if (sheet) {
+        setLocked(!!sheet.locked);
+
+        const entries = sheet.entries || {};
+        const map = {};
+        (sortedStudents || []).forEach((s) => {
+          const k = keyForStudent(s);
+          if (!k) return;
+          const e = entries[k];
+          const val = mode === "retake" ? e?.retake : e?.main;
+          map[k] = val === null || val === undefined ? "" : String(val);
+        });
+        setNotes(map);
+      }
+
       alert("Notes enregistrées avec succès.");
     } catch (e) {
       console.error(e);
@@ -336,7 +376,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   };
 
   // -------------------------
-  // Lock (verrouiller)
+  // Lock
   // -------------------------
   const handleLock = async () => {
     if (!selectedClass || !selectedSubject) {
@@ -347,19 +387,27 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       alert("Le verrouillage s’applique à la session principale (pas au rattrapage).");
       return;
     }
-    if (!window.confirm("Valider / verrouiller ces notes ? (elles ne seront plus modifiables)")) return;
+    if (
+      !window.confirm(
+        "Valider / verrouiller ces notes ? (elles ne seront plus modifiables)"
+      )
+    )
+      return;
 
     try {
       setSaving(true);
+
       const body = {
         academicYear,
         classId: selectedClass.id,
         semester,
         examType,
         subjectId: selectedSubject.id,
+        subjectLabel: getSubjectLabel(selectedSubject) || "",
+        scaleMax,
       };
 
-      const res = await fetch(`${API_BASE}/notes/lock`, {
+      const res = await fetch(`${API_BASE}/notes/sheet/lock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -381,13 +429,14 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const handleCancel = () => {
     if (window.confirm("Annuler les modifications non enregistrées ?")) {
       setNotes({});
+      setActiveStudentKey("");
     }
   };
 
   const classLabel = selectedClass
-    ? `${selectedClass.academicYear || academicYear} · ${selectedClass.title || selectedClass.displayName || ""} ${
-        selectedClass.studyYear ? `· Niveau ${selectedClass.studyYear}` : ""
-      }`
+    ? `${selectedClass.academicYear || academicYear} · ${
+        selectedClass.title || selectedClass.displayName || ""
+      } ${selectedClass.studyYear ? `· Niveau ${selectedClass.studyYear}` : ""}`
     : "Aucune classe sélectionnée";
 
   return (
@@ -405,7 +454,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
               <div style={headerStyles.left}>
                 <h1 style={headerStyles.title}>Gestion des notes</h1>
                 <p style={headerStyles.subtitle}>
-                  Sélectionnez l’année, la classe, le semestre, l’examen, la session et la matière.
+                  Sélectionnez l’année, la classe, le semestre, l’examen, la session
+                  et la matière.
                 </p>
 
                 <p style={headerStyles.badge}>
@@ -422,7 +472,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   {" · "}
                   <strong>Examen :</strong> {examType}
                   {" · "}
-                  <strong>Session :</strong> {sessionType === "rattrapage" ? "Rattrapage" : "Principale"}
+                  <strong>Session :</strong>{" "}
+                  {sessionType === "rattrapage" ? "Rattrapage" : "Principale"}
                   {" · "}
                   <strong>Verrouillé :</strong> {locked ? "Oui" : "Non"}
                 </p>
@@ -544,7 +595,10 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                       style={{
                         ...headerStyles.lockBtn,
                         opacity: sessionType === "main" && selectedSubjectId ? 1 : 0.6,
-                        cursor: sessionType === "main" && selectedSubjectId ? "pointer" : "not-allowed",
+                        cursor:
+                          sessionType === "main" && selectedSubjectId
+                            ? "pointer"
+                            : "not-allowed",
                       }}
                       onClick={handleLock}
                       disabled={saving || !selectedSubjectId || sessionType !== "main"}
@@ -566,18 +620,23 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     {selectedSubject ? ` — ${getSubjectLabel(selectedSubject)}` : ""}
                   </h2>
                   <p style={entryStyles.subtitle}>
-                    {semester} · {examType} · {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
+                    {semester} · {examType} ·{" "}
+                    {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} ·
+                    Échelle 0–{scaleMax}
                   </p>
 
                   {!selectedClassId && (
                     <p style={entryStyles.warn}>Choisissez d’abord une classe.</p>
                   )}
                   {selectedClassId && !selectedSubjectId && (
-                    <p style={entryStyles.warn}>Choisissez la matière (liée à cette classe).</p>
+                    <p style={entryStyles.warn}>
+                      Choisissez la matière (liée à cette classe).
+                    </p>
                   )}
                   {selectedClassId && selectedSubjectId && locked && sessionType === "main" && (
                     <p style={entryStyles.warn}>
-                      Cette feuille est verrouillée (session principale). Passez en <strong>Rattrapage</strong> pour modifier légalement.
+                      Cette feuille est verrouillée (session principale). Passez en{" "}
+                      <strong>Rattrapage</strong> pour modifier légalement.
                     </p>
                   )}
                 </div>
@@ -602,33 +661,54 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     </thead>
                     <tbody>
                       {sortedStudents.map((s, idx) => {
+                        const key = keyForStudent(s) || String(idx);
                         const val = getNoteValue(s);
                         const mention = computeMention(val);
                         const status = computeStatus(val);
+                        const isActiveRow = activeStudentKey === key;
+
+                        const tdBase = isActiveRow
+                          ? { ...entryStyles.tdBase, ...stylesActiveCell }
+                          : entryStyles.tdBase;
 
                         return (
-                          <tr key={keyForStudent(s) || idx}>
-                            <td style={entryStyles.tdIndex}>{idx + 1}</td>
-                            <td style={entryStyles.tdMatricule}>{s.matricule || "—"}</td>
-                            <td style={entryStyles.tdName}>{(s.fullName || "").toUpperCase()}</td>
-                            <td style={entryStyles.tdNote}>
+                          <tr
+                            key={key}
+                            style={isActiveRow ? stylesActiveRow : undefined}
+                          >
+                            <td style={{ ...entryStyles.tdIndex, ...tdBase }}>
+                              {idx + 1}
+                            </td>
+                            <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>
+                              {s.matricule || "—"}
+                            </td>
+                            <td style={{ ...entryStyles.tdName, ...tdBase }}>
+                              {(s.fullName || "").toUpperCase()}
+                            </td>
+                            <td style={{ ...entryStyles.tdNote, ...tdBase }}>
                               <input
                                 type="number"
                                 min={0}
                                 max={scaleMax}
                                 step="0.25"
+                                value={val}
+                                disabled={!canEdit}
+                                onChange={(e) => handleNoteChange(s, e.target.value)}
+                                onFocus={() => setActiveStudentKey(key)}
+                                onBlur={() => setActiveStudentKey("")}
                                 style={{
                                   ...entryStyles.noteInput,
-                                  opacity: canEdit ? 1 : 0.5,
-                                  cursor: canEdit ? "text" : "not-allowed",
+                                  ...(canEdit ? null : stylesDisabledInput),
+                                  ...(isActiveRow && canEdit ? stylesActiveInput : null),
                                 }}
-                                disabled={!canEdit}
-                                value={val}
-                                onChange={(e) => handleNoteChange(s, e.target.value)}
                               />
                             </td>
-                            <td style={entryStyles.tdMention}>{mention}</td>
-                            <td style={entryStyles.tdStatus}>{status}</td>
+                            <td style={{ ...entryStyles.tdMention, ...tdBase }}>
+                              {mention}
+                            </td>
+                            <td style={{ ...entryStyles.tdStatus, ...tdBase }}>
+                              {status}
+                            </td>
                           </tr>
                         );
                       })}
@@ -686,6 +766,30 @@ const inputPill = {
   minWidth: 0,
   width: "100%",
   boxSizing: "border-box",
+};
+
+// ✅ CASE active (input)
+const stylesActiveInput = {
+  background: "#F0FDFA",
+  border: "1px solid #22C55E",
+  boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18)",
+};
+
+// ✅ LIGNE active (toute la ligne)
+const stylesActiveRow = {
+  background: "#F0FDFA",
+};
+
+// ✅ CELLULES actives (pour “encadrer” la ligne)
+const stylesActiveCell = {
+  borderTop: "1px solid #22C55E",
+  borderBottom: "1px solid #22C55E",
+};
+
+// ✅ style disabled
+const stylesDisabledInput = {
+  opacity: 0.5,
+  cursor: "not-allowed",
 };
 
 /* ========================= Styles ========================= */
@@ -844,6 +948,12 @@ const entryStyles = {
     overflow: "hidden",
   },
   table: { width: "100%", borderCollapse: "collapse", fontSize: ".85rem" },
+
+  // ✅ base “td” (pour pouvoir ajouter un bord actif proprement)
+  tdBase: {
+    // on ne met pas de borderLeft/Right ici (ça sera appliqué sur 1ère/dernière cellule)
+  },
+
   thIndex: {
     padding: "8px 10px",
     borderBottom: "1px solid #E5E7EB",
