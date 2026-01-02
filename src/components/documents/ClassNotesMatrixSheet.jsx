@@ -11,6 +11,10 @@ const SEMESTERS = ["S1", "S2"];
 const EXAMS = ["CC", "SN", "EXAMEN"];
 const SESSIONS = ["Principale", "Rattrapage"];
 
+// ✅ ton logo doit être accessible publiquement (public/)
+// exemple : public/logo-ipmbtpe.png  => /logo-ipmbtpe.png
+const LOGO_PUBLIC_PATH = "/logo-ipmbtpe.png";
+
 // --- helpers ---
 async function fetchJsonFirstOk(urls) {
   let lastErr = null;
@@ -31,6 +35,52 @@ async function fetchJsonFirstOk(urls) {
 
 function cleanStr(x) {
   return (x ?? "").toString().trim();
+}
+
+// ✅ convertit une image (URL) en dataURL (base64) => marche dans window.open + print preview
+async function toDataUrlFromPublicPath(path) {
+  try {
+    const absoluteUrl = new URL(path, window.location.origin).href;
+    const res = await fetch(absoluteUrl, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Logo fetch failed: HTTP ${res.status}`);
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.warn("Logo non chargé (PDF):", e);
+    return ""; // on laisse vide => l'entête reste, sans logo
+  }
+}
+
+/**
+ * ✅ Affiche 0..9 comme 00..09 ET 2.5 / 2,5 comme 02.5
+ * (padding sur la partie entière)
+ */
+function formatNote2Digits(v) {
+  if (v === undefined || v === null) return "";
+  let s = String(v).trim();
+  if (s === "") return "";
+
+  // gérer la virgule française: 2,5 -> 2.5 (pour le traitement)
+  s = s.replace(",", ".");
+
+  // accepter formats: "2", "2.5", "02.5", "10", "14.5"
+  const m = s.match(/^(\d+)(\.\d+)?$/);
+  if (!m) return String(v).trim(); // si non-numérique, on laisse tel quel
+
+  const intPart = m[1]; // "2"
+  const decPart = m[2] || ""; // ".5" ou ""
+
+  const padded = intPart.padStart(2, "0") + decPart;
+
+  // ⚠️ Si tu veux afficher avec virgule dans l'UI/PDF, remplace la ligne du return par:
+  // return padded.replace(".", ",");
+
+  return padded; // garde le point (02.5)
 }
 
 export default function ClassNotesMatrixSheet({ onClose }) {
@@ -153,7 +203,6 @@ export default function ClassNotesMatrixSheet({ onClose }) {
             .filter((x) => x.code && x.label)
         : [];
 
-    // unique by code
     const seen = new Set();
     const uniq = [];
     for (const it of items) {
@@ -189,7 +238,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
   // ✅ IMPORTANT: "Classe" du titre PDF = nom complet (title) si dispo
   const classFullName = selectedClass?.title || selectedClass?.abbrev || selectedClass?.id || "";
 
-  const handleGeneratePdf = () => {
+  const handleGeneratePdf = async () => {
     if (busy) return;
     if (!selectedClass) {
       alert("Veuillez d'abord choisir une classe.");
@@ -198,17 +247,20 @@ export default function ClassNotesMatrixSheet({ onClose }) {
 
     setBusy(true);
     try {
+      // ✅ garantie logo visible dans PDF: dataURL
+      const logoDataUrl = await toDataUrlFromPublicPath(LOGO_PUBLIC_PATH);
+
       const html = generateNotesMatrixPDFHTML({
         academicYear,
-        classTitle: classFullName, // ✅ nom complet
+        classTitle: classFullName,
         specialite: specDisplay || "",
         semester,
         exam,
-        // session: session, // ⚠️ on ne l'affiche plus sur le PDF (mais on garde la donnée si tu veux)
         students: sortedStudents,
         subjectColumns,
         values: valuesMap,
-        legendItems, // ✅ pour la légende
+        legendItems,
+        logoDataUrl,
       });
 
       const w = window.open("", "_blank");
@@ -229,7 +281,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
       <div style={styles.modal}>
         <header style={styles.modalHeader}>
           <div>
-            <h2 style={styles.modalTitle}>Liste des notes (classe) — A4 paysage</h2>
+            <h2 style={styles.modalTitle}>Notes de Contrôle Continu (classe) — A4 paysage</h2>
             <p style={styles.modalSubtitle}>
               Sélectionne Année / Classe / Semestre / Examen / Session, puis génère la liste.
             </p>
@@ -371,8 +423,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
                   </div>
                 </div>
 
-                {/* ✅ titre preview avec nom complet */}
-                <div style={sheetStyles.titleRow}>LISTE DES NOTES ({classFullName || "CLASSE"})</div>
+                <div style={sheetStyles.titleRow}>Notes de Contrôle Continu ({classFullName || "CLASSE"})</div>
 
                 <div style={sheetStyles.tableWrap}>
                   <table style={sheetStyles.table}>
@@ -412,8 +463,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
                               <td style={sheetStyles.tdNameCell}>{getStudentDisplayName(stu)}</td>
                               {subjectColumns.map((code) => {
                                 const v = row?.[code];
-                                const show =
-                                  v !== undefined && v !== null && String(v).trim() !== "" ? String(v) : "";
+                                const show = formatNote2Digits(v);
                                 return (
                                   <td key={`${sid}-${code}`} style={sheetStyles.tdBlank}>
                                     {show}
@@ -428,7 +478,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
                   </table>
                 </div>
 
-                <div style={sheetStyles.footerRow}>Nom, date et signature du responsable :</div>
+                <div style={sheetStyles.footerRow}>Nom, date et signature du DAAC :</div>
               </div>
             </div>
           </div>
@@ -576,29 +626,35 @@ const sheetStyles = {
   },
   tableWrap: { flex: 1, padding: "0 10px 10px 10px", overflow: "hidden" },
   table: { width: "100%", borderCollapse: "collapse" },
+
   thNum: { border: "1px solid #000", padding: "3px 4px", width: 30, textAlign: "center" },
-  thMat: { border: "1px solid #000", padding: "3px 4px", width: 110, textAlign: "center" },
-  thName: { border: "1px solid #000", padding: "3px 6px", width: 240, textAlign: "left" },
+  thMat: { border: "1px solid #000", padding: "3px 4px", width: 130, textAlign: "center" },
+  thName: { border: "1px solid #000", padding: "3px 6px", width: 360, textAlign: "left" },
   thSubj: {
     border: "1px solid #000",
     padding: "3px 4px",
-    minWidth: 70,
+    minWidth: 52,
     textAlign: "center",
     fontSize: "10px",
     whiteSpace: "nowrap",
   },
+
   tdCenter: { border: "1px solid #000", padding: "3px 4px", textAlign: "center", verticalAlign: "middle" },
+
+  // ✅ Police matricule plus visible (preview)
   tdMono: {
     border: "1px solid #000",
     padding: "3px 4px",
     fontFamily: '"Courier New", monospace',
-    fontSize: "10px",
+    fontSize: "12px",
+    fontWeight: 900,
+    letterSpacing: "0.2px",
     textAlign: "center",
     verticalAlign: "middle",
   },
+
   tdNameCell: { border: "1px solid #000", padding: "3px 6px", verticalAlign: "middle" },
 
-  // ✅ Notes: centrées + chiffres alignés (tabular)
   tdBlank: {
     border: "1px solid #000",
     padding: "0 4px",
@@ -618,14 +674,7 @@ const sheetStyles = {
   footerRow: { marginTop: 4, padding: "0 10px", fontSize: "0.85rem", textAlign: "left" },
 };
 
-/* ---------- PDF HTML (A4 paysage) ----------
-   ✅ Fixes demandés:
-   1) Retire "Session : Principale" du PDF
-   2) Titre: LISTE DES NOTES (NOM COMPLET DE LA CLASSE)
-   3) Notes centrées dans les cases (pro)
-   4) Max 11 matières par page
-   5) Légende: si peu de matières => à droite, sinon en bas (par page)
-*/
+/* ---------- PDF HTML (A4 paysage) ---------- */
 function generateNotesMatrixPDFHTML({
   academicYear,
   classTitle,
@@ -636,6 +685,7 @@ function generateNotesMatrixPDFHTML({
   subjectColumns,
   values,
   legendItems,
+  logoDataUrl,
 }) {
   const safeYear = academicYear || "—";
   const safeClass = classTitle || "—";
@@ -647,6 +697,11 @@ function generateNotesMatrixPDFHTML({
   const vals = values || {};
   const legendAll = Array.isArray(legendItems) ? legendItems : [];
 
+  const HEADER_TITLE_1 = "Institut Polytechnique des Métiers du Bâtiment,";
+  const HEADER_TITLE_2 = "des Travaux Publics et de l’Entrepreneuriat";
+  const HEADER_SUB =
+    "Autorisation d’ouverture N°25-01077/MINESUP/SG/DDES/SD-ESUP/SDA/AOS du 26 mars 2025";
+
   // chunk subjects by 11
   const chunk = (arr, size) => {
     const out = [];
@@ -655,12 +710,31 @@ function generateNotesMatrixPDFHTML({
   };
   const pagesCols = chunk(colsAll, 11);
 
-  // for quick legend lookup
   const legendMap = new Map();
   for (const it of legendAll) {
     if (!it?.code || !it?.label) continue;
     legendMap.set(String(it.code), String(it.label));
   }
+
+  const buildHeaderHTML = () => {
+    return `
+      <div class="doc-header">
+        <div class="doc-header__left">
+          ${
+            logoDataUrl
+              ? `<img class="doc-header__logo" src="${escapeHtml(logoDataUrl)}" alt="Logo" />`
+              : `<div class="doc-header__logo-fallback"></div>`
+          }
+        </div>
+        <div class="doc-header__center">
+          <div class="doc-header__title">${escapeHtml(HEADER_TITLE_1)}</div>
+          <div class="doc-header__title">${escapeHtml(HEADER_TITLE_2)}</div>
+          <div class="doc-header__sub">${escapeHtml(HEADER_SUB)}</div>
+        </div>
+        <div class="doc-header__right"></div>
+      </div>
+    `;
+  };
 
   const buildRowsHTML = (cols) => {
     if (!students || !students.length) {
@@ -683,7 +757,7 @@ function generateNotesMatrixPDFHTML({
         const cells = cols
           .map((code) => {
             const v = row?.[code];
-            const txt = v === undefined || v === null || String(v).trim() === "" ? "" : String(v);
+            const txt = formatNote2Digits(v);
             return `<td class="td-note">${escapeHtml(txt)}</td>`;
           })
           .join("");
@@ -719,17 +793,17 @@ function generateNotesMatrixPDFHTML({
   };
 
   const pagesHTML = pagesCols
-    .map((cols, pageIndex) => {
+    .map((cols) => {
       const headColsHTML = cols.map((c) => `<th class="th-subj">${escapeHtml(c)}</th>`).join("");
       const bodyRowsHTML = buildRowsHTML(cols);
 
-      // ✅ rule stable: if <= 6 subjects => legend on the right; else legend bottom
       const legendOnRight = cols.length > 0 && cols.length <= 6;
-
       const legendHTML = buildLegendHTML(cols);
 
       return `
         <div class="page">
+          ${buildHeaderHTML()}
+
           <div class="meta">
             <span><b>Année :</b> ${escapeHtml(safeYear)}</span>
             <span><b>Classe :</b> ${escapeHtml(safeClass)}</span>
@@ -740,7 +814,7 @@ function generateNotesMatrixPDFHTML({
             <span><b>Spécialité :</b> ${escapeHtml(safeSpec)}</span>
           </div>
 
-          <div class="title">LISTE DES NOTES (${escapeHtml(safeClass)})</div>
+          <div class="title">Notes de Contrôle Continu (${escapeHtml(safeClass)})</div>
 
           ${
             legendOnRight
@@ -787,7 +861,7 @@ function generateNotesMatrixPDFHTML({
           }
 
           <div class="footer">
-            Nom, date et signature du responsable :
+            Nom, date et signature du DAAC :
           </div>
         </div>
       `;
@@ -804,29 +878,67 @@ function generateNotesMatrixPDFHTML({
     body { font-family: Arial, sans-serif; margin: 0; background: #fff; color: #000; font-size: 11px; }
     .page { width: 297mm; min-height: 210mm; page-break-after: always; }
 
-    .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 8px; }
+    /* ENTÊTE PDF (sur chaque page) */
+    .doc-header{
+      display:grid;
+      grid-template-columns: 22mm 1fr 22mm;
+      align-items:center;
+      gap: 6mm;
+      padding-top: 2mm;
+      padding-bottom: 2mm;
+      border-bottom: 1px solid #000;
+      margin-bottom: 3mm;
+    }
+    .doc-header__logo{
+      width: 18mm;
+      height: 18mm;
+      object-fit: contain;
+      display:block;
+    }
+    .doc-header__logo-fallback{
+      width:18mm; height:18mm;
+    }
+    .doc-header__center{
+      text-align:center;
+      line-height: 1.2;
+    }
+    .doc-header__title{
+      font-weight: 900;
+      font-size: 12px;
+    }
+    .doc-header__sub{
+      margin-top: 2px;
+      font-size: 9.5px;
+      font-weight: 600;
+    }
+
+    .meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; margin-top: 2mm; }
     .meta span b { font-weight: 800; }
 
-    .title { text-align: center; font-weight: 900; font-size: 14px; margin: 10px 0 6px; text-decoration: underline; }
+    .title { text-align: center; font-weight: 900; font-size: 14px; margin: 6px 0 6px; text-decoration: underline; }
 
-    /* ----- table ----- */
     table { width: 100%; border-collapse: collapse; margin-top: 6px; }
     th, td { border: 1px solid #000; height: 22px; }
     th { padding: 4px; text-align: center; }
     td { padding: 0 4px; text-align: center; vertical-align: middle; font-variant-numeric: tabular-nums; }
 
     .th-num { width: 30px; }
-    .th-mat { width: 95px; }
-    .th-name { width: 80mm; text-align: left; padding-left: 6px; }
-    .th-subj { min-width: 18mm; font-size: 10px; white-space: nowrap; }
+
+    /* ✅ PDF: matricule plus visible */
+    .th-mat { width: 32mm; }
+    .td-mono { font-family: "Courier New", monospace; font-size: 12px; font-weight: 900; letter-spacing: .2px; }
+
+    /* ✅ PDF: noms plus large */
+    .th-name { width: 90mm; text-align: left; padding-left: 6px; }
+    .td-left { text-align: left; padding-left: 6px; }
+
+    /* ✅ PDF: matières plus étroites */
+    .th-subj { min-width: 14mm; font-size: 10px; white-space: nowrap; }
 
     .td-center { text-align: center; }
-    .td-mono { font-family: "Courier New", monospace; font-size: 10px; }
-    .td-left { text-align: left; padding-left: 6px; }
     .td-empty { text-align: center; font-style: italic; color: #666; padding: 12px; }
     .td-note { text-align: center; vertical-align: middle; font-variant-numeric: tabular-nums; }
 
-    /* ----- legend ----- */
     .legend-title { font-weight: 900; font-size: 11px; margin-bottom: 6px; text-decoration: underline; }
     .legend-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
     .legend-item { font-size: 10px; }
@@ -834,7 +946,6 @@ function generateNotesMatrixPDFHTML({
 
     .legend-bottom { margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; }
 
-    /* right-side layout when few subjects */
     .layout { display: grid; grid-template-columns: 1fr 72mm; gap: 8mm; align-items: start; }
     .table-area { min-width: 0; }
     .legend-right { border: 1px solid #000; padding: 6px; }
