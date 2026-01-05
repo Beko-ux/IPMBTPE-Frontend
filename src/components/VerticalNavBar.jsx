@@ -9,6 +9,7 @@
 //   LayoutGrid,
 //   Settings,
 //   LogOut,
+//   BookOpen,
 // } from "lucide-react";
 // import { colors } from "../styles/theme";
 
@@ -63,6 +64,15 @@
 //         >
 //           <FileText size={18} />
 //           <span>Notes</span>
+//         </button>
+
+//         {/* 👉 Nouvelle entrée Matières */}
+//         <button
+//           style={isActive("matieres")}
+//           onClick={() => go("matieres")}
+//         >
+//           <BookOpen size={18} />
+//           <span>Matières</span>
 //         </button>
 
 //         <button
@@ -183,6 +193,10 @@
 
 
 
+
+
+
+
 // src/components/VerticalNavBar.jsx
 import {
   GraduationCap,
@@ -195,6 +209,7 @@ import {
   Settings,
   LogOut,
   BookOpen,
+  Send, // ✅ NEW
 } from "lucide-react";
 import { colors } from "../styles/theme";
 
@@ -219,85 +234,61 @@ const VerticalNavBar = ({ currentSection = "etudiants", onNavigate }) => {
       </div>
 
       <nav style={styles.nav}>
-        <button
-          style={isActive("etudiants")}
-          onClick={() => go("etudiants")}
-        >
+        <button style={isActive("etudiants")} onClick={() => go("etudiants")}>
           <Users size={18} />
           <span>Étudiants</span>
         </button>
 
-        <button
-          style={isActive("classes")}
-          onClick={() => go("classes")}
-        >
+        <button style={isActive("classes")} onClick={() => go("classes")}>
           <GraduationCap size={18} />
           <span>Classes</span>
         </button>
 
-        <button
-          style={isActive("presences")}
-          onClick={() => go("presences")}
-        >
+        <button style={isActive("presences")} onClick={() => go("presences")}>
           <Calendar size={18} />
           <span>Présences</span>
         </button>
 
-        <button
-          style={isActive("notes")}
-          onClick={() => go("notes")}
-        >
+        <button style={isActive("notes")} onClick={() => go("notes")}>
           <FileText size={18} />
           <span>Notes</span>
         </button>
 
         {/* 👉 Nouvelle entrée Matières */}
-        <button
-          style={isActive("matieres")}
-          onClick={() => go("matieres")}
-        >
+        <button style={isActive("matieres")} onClick={() => go("matieres")}>
           <BookOpen size={18} />
           <span>Matières</span>
         </button>
 
-        <button
-          style={isActive("documents")}
-          onClick={() => go("documents")}
-        >
+        <button style={isActive("documents")} onClick={() => go("documents")}>
           <FileText size={18} />
           <span>Documents</span>
         </button>
 
-        <button
-          style={isActive("rapports")}
-          onClick={() => go("rapports")}
-        >
+        {/* 👉 Nouvelle entrée Envoyer */}
+        <button style={isActive("envoyer")} onClick={() => go("envoyer")}>
+          <Send size={18} />
+          <span>Envoyer</span>
+        </button>
+
+        <button style={isActive("rapports")} onClick={() => go("rapports")}>
           <BarChart3 size={18} />
           <span>Rapports</span>
         </button>
 
-        <button
-          style={isActive("scolarite")}
-          onClick={() => go("scolarite")}
-        >
+        <button style={isActive("scolarite")} onClick={() => go("scolarite")}>
           <Trophy size={18} />
           <span>Scolarité</span>
         </button>
 
-        <button
-          style={isActive("dashboard")}
-          onClick={() => go("dashboard")}
-        >
+        <button style={isActive("dashboard")} onClick={() => go("dashboard")}>
           <LayoutGrid size={18} />
           <span>Tableau de bord</span>
         </button>
       </nav>
 
       <div style={styles.footer}>
-        <button
-          style={isActive("settings")}
-          onClick={() => go("settings")}
-        >
+        <button style={isActive("settings")} onClick={() => go("settings")}>
           <Settings size={18} />
           <span>Paramètres</span>
         </button>
