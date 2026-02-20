@@ -2,205 +2,303 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-
-// Même DICT que tes modales (pour spécialités/options)
-const DICT = {
-  "Filières de gestion": {
-    type: "gestion",
-    specialites: [
-      ["Comptabilité et Gestion des Entreprises", "CGE"],
-      ["Administration des Collectivités Territoriales", "ACT"],
-      ["Gestion des ONG", "ONG"],
-      ["Gestion de Projets", "GPR"],
-      ["Gestion des Ressources Humaines", "GRH"],
-      ["Assistant Manager", "AMA"],
-      ["Banque et Finance", "BAF"],
-      ["Marketing – Commerce – Vente", "MCV"],
-      ["Commerce International", "CIN"],
-      ["Gestion Logistique et Transport", "GLT"],
-      ["Statistiques", "STA"],
-      ["Douane et Transit", "DTR"],
-      ["Comptabilité – Contrôle – Audit", "CCA"],
-      ["Finance – Comptabilité", "FIC"],
-      ["Banque – Finance et Assurance", "BFA"],
-      ["Marketing et Communication Digitale", "MCD"],
-      ["Marketing – Management Opérationnel", "MMO"],
-      ["Management des Organisations", "MOR"],
-      ["Gestion des Ressources Humaines", "GRH"],
-      ["Management de la Qualité", "MAQ"],
-      ["Management des Projets", "MPR"],
-    ],
-  },
-  "Filières carrières juridiques": {
-    type: "juridique",
-    specialites: [
-      ["Droit Foncier et Domanial", "DFD"],
-      ["Professions Immobilières", "PRI"],
-      ["Douane et Transit", "DTR"],
-      ["Droit des Affaires et de l’Entreprise", "DAE"],
-    ],
-  },
-  "Filières industrielles": {
-    type: "industriel",
-    specialites: [
-      ["Génie Civil", ""],
-      ["Génie Informatique", ""],
-      ["Télécommunication", ""],
-      ["Génie Mécanique", ""],
-      ["Génie Thermique", ""],
-      ["Génie Électrique", ""],
-    ],
-    optionsBySpecialite: {
-      "Génie Civil": [
-        ["Bâtiment", "BAT"],
-        ["Travaux Publics", "TPU"],
-        ["Géométrie Topographe", "GTP"],
-        ["Installation Sanitaire", "INS"],
-      ],
-      "Génie Informatique": [
-        ["Génie Logiciel", "GLI"],
-        ["E-Commerce et Marketing Numérique", "ECM"],
-        ["Gestion des Systèmes Informatiques", "GSI"],
-        ["Informatique Industrielle et Automatisme", "IIA"],
-      ],
-      Télécommunication: [
-        ["Télécommunication", "TEL"],
-        ["Réseau et Sécurité", "RES"],
-      ],
-      "Génie Mécanique": [
-        ["Chaudronnerie et Soudure", "CHS"],
-        ["Fabrication Mécanique", "FBM"],
-        ["Mécatronique", "MEC"],
-        ["Maintenance Systèmes Industriels", "MSI"],
-        ["Électromécanique", "ELM"],
-      ],
-      "Génie Thermique": [
-        ["Énergies Renouvelables", "ENR"],
-        ["Froid et Climatisation", "FRC"],
-      ],
-      "Génie Électrique": [
-        ["Maintenance Appareils Biomédicaux", "MAB"],
-        ["Électrotechnique", "ELT"],
-      ],
-    },
-  },
-};
+import { Save } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-function buildAcademicYears() {
-  const start = 2025;
-  const thisYear = new Date().getFullYear();
-  const end = thisYear + 6;
-  const out = [];
-  for (let y = start; y <= end; y++) out.push(`${y}-${y + 1}`);
-  return out;
-}
-
-export default function PresencesPage({
-  currentSection = "presences",
-  onNavigate,
-}) {
-  const [students, setStudents] = useState([]);
+export default function PresencesPage({ currentSection = "presences", onNavigate }) {
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // filtres classe
-  const AY_LIST = useMemo(buildAcademicYears, []);
-  const [academicYear, setAcademicYear] = useState(AY_LIST[0] || "");
-  const [filiere, setFiliere] = useState("");
-  const [specialite, setSpecialite] = useState("");
-  const [option, setOption] = useState("");
-  const [cycle, setCycle] = useState("");
-  const [studyYear, setStudyYear] = useState("");
+  // -------------------------
+  // Filtres obligatoires
+  // -------------------------
+  const [academicYear, setAcademicYear] = useState("2025-2026");
 
-  // période (texte libre comme sur ton exemple)
-  const [periode, setPeriode] = useState("");
+  const [classes, setClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
 
-  // modal preview
-  const [openSheet, setOpenSheet] = useState(false);
+  // ✅ Date pickers (format YYYY-MM-DD)
+  const [periodFrom, setPeriodFrom] = useState(""); // ex: 2025-01-05
+  const [periodTo, setPeriodTo] = useState("");     // ex: 2025-01-09
 
-  const loadStudents = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/students`);
-      const data = await res.json();
-      setStudents(Array.isArray(data) ? data : []);
-    } catch {
+  // Données chargées depuis le backend
+  const [sheet, setSheet] = useState(null); // { id, dates:[], dayLabels:[], entries:{} }
+  const [students, setStudents] = useState([]); // liste d'étudiants
+  const [maxHoursPerDay, setMaxHoursPerDay] = useState(null);
+  const [classMeta, setClassMeta] = useState(null);
+
+  // ✅ ligne active (étudiant en cours de saisie)
+  const [activeStudentKey, setActiveStudentKey] = useState("");
+
+  const loadTimerRef = useRef(null);
+  const lastLoadKeyRef = useRef("");
+
+  // -------------------------
+  // Charger classes
+  // -------------------------
+  useEffect(() => {
+    const loadClasses = async () => {
+      setLoadingClasses(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
+        );
+        const data = await res.json();
+
+        const list =
+          Array.isArray(data)
+            ? data
+            : Array.isArray(data?.classes)
+            ? data.classes
+            : Array.isArray(data?.data)
+            ? data.data
+            : [];
+
+        setClasses(list);
+      } catch (e) {
+        console.error("Erreur chargement classes:", e);
+        setClasses([]);
+      } finally {
+        setLoadingClasses(false);
+      }
+    };
+    loadClasses();
+  }, [academicYear]);
+
+  const selectedClass = useMemo(
+    () => classes.find((c) => String(c.id) === String(selectedClassId)) || null,
+    [classes, selectedClassId]
+  );
+
+  const sortedStudents = useMemo(() => {
+    const arr = Array.isArray(students) ? [...students] : [];
+    return arr.sort((a, b) => {
+      const nameA = (a.fullName || "").toUpperCase();
+      const nameB = (b.fullName || "").toUpperCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      const matA = (a.matricule || "").toUpperCase();
+      const matB = (b.matricule || "").toUpperCase();
+      return matA.localeCompare(matB);
+    });
+  }, [students]);
+
+  const keyForStudent = (s) =>
+    s.id || s.studentId || s.matricule || String(s._id || "");
+
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+  function fmtFR(isoDate) {
+    // isoDate: "YYYY-MM-DD"
+    if (!isoDate) return "";
+    const [y, m, d] = isoDate.split("-").map((x) => Number(x));
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const day = String(dt.getUTCDate()).padStart(2, "0");
+    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+    return `${day} ${months[dt.getUTCMonth()]} ${dt.getUTCFullYear()}`;
+  }
+
+  const periodLabel =
+    periodFrom && periodTo ? `Du ${fmtFR(periodFrom)} au ${fmtFR(periodTo)}` : "—";
+
+  // -------------------------
+  // Get/Set heures d'absence (par date)
+  // -------------------------
+  const getHoursValue = (student, dateISO) => {
+    const k = keyForStudent(student);
+    if (!k || !sheet?.entries) return "";
+    const row = sheet.entries[k] || {};
+    const days = row.days || {};
+    const v = days[dateISO];
+    return v === null || v === undefined ? "" : String(v);
+  };
+
+  const setHoursValue = (student, dateISO, raw) => {
+    if (!sheet) return;
+    const k = keyForStudent(student);
+    if (!k) return;
+
+    let s = (raw ?? "").toString().replace(",", ".");
+    if (s === "") {
+      setSheet((prev) => {
+        const next = structuredClone(prev);
+        next.entries = next.entries || {};
+        next.entries[k] =
+          next.entries[k] || {
+            studentId: student.id || null,
+            matricule: student.matricule || null,
+            fullName: student.fullName || "",
+          };
+        next.entries[k].days = next.entries[k].days || {};
+        delete next.entries[k].days[dateISO];
+        return next;
+      });
+      return;
+    }
+
+    const num = Number(s);
+    if (Number.isNaN(num)) return;
+
+    const max = typeof maxHoursPerDay === "number" ? maxHoursPerDay : 8;
+    const safe = clamp(num, 0, max);
+
+    setSheet((prev) => {
+      const next = structuredClone(prev);
+      next.entries = next.entries || {};
+      next.entries[k] =
+        next.entries[k] || {
+          studentId: student.id || null,
+          matricule: student.matricule || null,
+          fullName: student.fullName || "",
+        };
+      next.entries[k].days = next.entries[k].days || {};
+      next.entries[k].days[dateISO] = safe;
+      return next;
+    });
+  };
+
+  // -------------------------
+  // Auto-load fiche (sans bouton)
+  // -------------------------
+  useEffect(() => {
+    // reset affichage si filtres incomplets
+    if (!selectedClassId || !academicYear || !periodFrom || !periodTo) {
+      setSheet(null);
       setStudents([]);
+      setMaxHoursPerDay(null);
+      setClassMeta(null);
+      setActiveStudentKey("");
+      return;
+    }
+
+    const loadKey = `${selectedClassId}__${academicYear}__${periodFrom}__${periodTo}`;
+    if (lastLoadKeyRef.current === loadKey) return;
+
+    if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+
+    // petite “debounce” pour éviter de spammer quand tu tapes/changer
+    loadTimerRef.current = setTimeout(async () => {
+      lastLoadKeyRef.current = loadKey;
+
+      setActiveStudentKey("");
+      setLoading(true);
+      try {
+        const qs = new URLSearchParams({
+          classId: String(selectedClassId),
+          academicYear: String(academicYear || "").trim(),
+          periodFrom: String(periodFrom),
+          periodTo: String(periodTo),
+        });
+
+        const res = await fetch(`${API_BASE}/presences/sheet?${qs.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Erreur lors du chargement.");
+
+        setSheet(data?.sheet || null);
+        setStudents(Array.isArray(data?.students) ? data.students : []);
+        setMaxHoursPerDay(
+          typeof data?.maxHoursPerDay === "number" ? data.maxHoursPerDay : null
+        );
+        setClassMeta(data?.class || null);
+      } catch (e) {
+        console.error("Erreur chargement presences:", e);
+        alert(e.message || "Erreur réseau.");
+        setSheet(null);
+        setStudents([]);
+        setMaxHoursPerDay(null);
+        setClassMeta(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
+    };
+  }, [selectedClassId, academicYear, periodFrom, periodTo]);
+
+  // -------------------------
+  // Enregistrer fiche
+  // -------------------------
+  const handleSave = async () => {
+    if (!selectedClassId) return alert("Veuillez choisir une classe.");
+    if (!academicYear) return alert("Année académique obligatoire.");
+    if (!periodFrom || !periodTo) return alert("Période obligatoire (du / au).");
+    if (!sheet) return alert("Aucune fiche chargée.");
+
+    const dates = Array.isArray(sheet.dates) ? sheet.dates : [];
+    const max = typeof maxHoursPerDay === "number" ? maxHoursPerDay : 8;
+
+    const payloadEntries = (sortedStudents || []).map((s) => {
+      const k = keyForStudent(s);
+      const row = sheet.entries?.[k]?.days || {};
+      const days = {};
+
+      dates.forEach((dateISO) => {
+        const raw = row[dateISO];
+        if (raw === "" || raw === null || raw === undefined) return;
+        const num = Number(String(raw).replace(",", "."));
+        if (Number.isNaN(num)) return;
+        days[dateISO] = clamp(num, 0, max);
+      });
+
+      return {
+        studentKey: k,
+        studentId: s.id || null,
+        matricule: s.matricule || null,
+        fullName: s.fullName || "",
+        days,
+      };
+    });
+
+    try {
+      setSaving(true);
+      const body = {
+        classId: selectedClassId,
+        academicYear,
+        periodFrom,
+        periodTo,
+        entries: payloadEntries,
+      };
+
+      const res = await fetch(`${API_BASE}/presences/sheet/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Erreur lors de l’enregistrement.");
+
+      if (data?.sheet) setSheet(data.sheet);
+      alert("Absences enregistrées avec succès.");
+    } catch (e) {
+      console.error("Erreur save presences:", e);
+      alert(e.message || "Échec de l’enregistrement.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  useEffect(() => {
-    loadStudents();
-  }, []);
+  const classLabel = classMeta
+    ? `${classMeta.academicYear || academicYear} · ${
+        classMeta.title || classMeta.displayName || classMeta.abbrev || ""
+      }${classMeta.studyYear ? ` · Niveau ${classMeta.studyYear}` : ""}`
+    : selectedClass
+    ? `${selectedClass.academicYear || academicYear} · ${
+        selectedClass.title || selectedClass.displayName || selectedClass.abbrev || ""
+      }${selectedClass.studyYear ? ` · Niveau ${selectedClass.studyYear}` : ""}`
+    : "Aucune classe sélectionnée";
 
-  const currentConf = filiere ? DICT[filiere] : null;
-  const isIndus = currentConf?.type === "industriel";
-  const specialites = currentConf?.specialites || [];
-  const options =
-    isIndus && specialite
-      ? currentConf?.optionsBySpecialite?.[specialite] || []
-      : [];
-
-  // reset cascades quand filière change
-  useEffect(() => {
-    setSpecialite("");
-    setOption("");
-  }, [filiere]);
-
-  useEffect(() => {
-    if (isIndus) setOption("");
-  }, [specialite, isIndus]);
-
-  const filteredStudents = useMemo(() => {
-    return students
-      .filter((s) => (academicYear ? s.academicYear === academicYear : true))
-      .filter((s) => (filiere ? s.filiere === filiere : true))
-      .filter((s) => (cycle ? s.cycle === cycle : true))
-      .filter((s) =>
-        studyYear ? Number(s.studyYear) === Number(studyYear) : true
-      )
-      .filter((s) =>
-        specialite
-          ? (s.specialite || "") === specialite ||
-            (s.specialiteName || "") === specialite
-          : true
-      )
-      .filter((s) => (option ? (s.option || "") === option : true))
-      .sort((a, b) => {
-        const na = `${a.lastName || ""} ${a.firstName || ""}`.toLowerCase();
-        const nb = `${b.lastName || ""} ${b.firstName || ""}`.toLowerCase();
-        return na.localeCompare(nb);
-      });
-  }, [students, academicYear, filiere, specialite, option, cycle, studyYear]);
-
-  const days = useMemo(() => {
-    if (cycle === "LICENCE") {
-      return ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
-    }
-    return ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
-  }, [cycle]);
-
-  const classLabel = useMemo(() => {
-    const code =
-      (isIndus ? option : "") ||
-      specialites.find(([lab]) => lab === specialite)?.[1] ||
-      "";
-    const yearPart = cycle && studyYear ? ` - ${cycle}${studyYear}` : "";
-    return `${code || specialite || filiere || "Classe"}${yearPart}`.trim();
-  }, [isIndus, option, specialite, filiere, cycle, studyYear, specialites]);
+  const cycleLabel = classMeta?.cycle || selectedClass?.cycle || "BTS"; // ✅ défaut BTS
+  const maxLabel = typeof maxHoursPerDay === "number" ? maxHoursPerDay : "—";
 
   return (
     <div style={styles.layout}>
       <aside style={styles.left}>
-        <VerticalNavBar
-          currentSection={currentSection}
-          onNavigate={onNavigate}
-        />
+        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
       </aside>
 
       <main style={styles.right}>
@@ -208,457 +306,277 @@ export default function PresencesPage({
 
         <div style={styles.pageBody}>
           <div style={styles.container}>
-            {/* Header/Filtres */}
-            <div style={styles.headerCard}>
-              <div>
-                <h2 style={styles.h2}>Fiches de présence</h2>
-                <p style={styles.sub}>
-                  Sélectionne une classe puis génère la fiche A4 paysage.
+            {/* ---------------- Header ---------------- */}
+            <section style={headerStyles.card}>
+              <div style={headerStyles.left}>
+                <h1 style={headerStyles.title}>Fiches de présence</h1>
+                <p style={headerStyles.subtitle}>
+                  Sélectionne la classe + période, puis saisis les heures d’absence par jour.
+                </p>
+
+                <p style={headerStyles.badge}>
+                  {loading ? "Chargement…" : `${sortedStudents.length} étudiant(s)`}
+                </p>
+
+                <p style={headerStyles.classInfo}>{classLabel}</p>
+
+                <p style={headerStyles.subjectInfo}>
+                  <strong>Cycle :</strong> {cycleLabel}
+                  {" · "}
+                  <strong>Max heures/jour :</strong> {maxLabel}
+                  {" · "}
+                  <strong>Période :</strong> {periodLabel}
                 </p>
               </div>
 
-              <div style={styles.filtersGrid}>
-                <div style={styles.field}>
-                  <label style={styles.label}>Année académique</label>
-                  <select
-                    style={styles.select}
-                    value={academicYear}
-                    onChange={(e) => setAcademicYear(e.target.value)}
-                  >
-                    {AY_LIST.map((ay) => (
-                      <option key={ay} value={ay}>
-                        {ay}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div style={headerStyles.right}>
+                <div style={headerStyles.filtersRow}>
+                  <Field label="Année académique">
+                    <input
+                      style={inputPill}
+                      value={academicYear}
+                      onChange={(e) => {
+                        setAcademicYear(e.target.value);
+                        setSelectedClassId("");
+                        setPeriodFrom("");
+                        setPeriodTo("");
+                        setSheet(null);
+                        setStudents([]);
+                        setClassMeta(null);
+                        setMaxHoursPerDay(null);
+                        lastLoadKeyRef.current = "";
+                      }}
+                      placeholder="Ex: 2025-2026"
+                    />
+                  </Field>
 
-                <div style={styles.field}>
-                  <label style={styles.label}>Filière</label>
-                  <select
-                    style={styles.select}
-                    value={filiere}
-                    onChange={(e) => setFiliere(e.target.value)}
-                  >
-                    <option value="">Toutes</option>
-                    <option>Filières industrielles</option>
-                    <option>Filières de gestion</option>
-                    <option>Filières carrières juridiques</option>
-                  </select>
-                </div>
-
-                <div style={styles.field}>
-                  <label style={styles.label}>Spécialité</label>
-                  <select
-                    style={styles.select}
-                    value={specialite}
-                    onChange={(e) => setSpecialite(e.target.value)}
-                    disabled={!currentConf}
-                  >
-                    <option value="">Toutes</option>
-                    {specialites.map(([lab]) => (
-                      <option key={lab} value={lab}>
-                        {lab}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {isIndus && (
-                  <div style={styles.field}>
-                    <label style={styles.label}>Option</label>
+                  <Field label="Classe">
                     <select
-                      style={styles.select}
-                      value={option}
-                      onChange={(e) => setOption(e.target.value)}
-                      disabled={!specialite}
+                      style={inputPill}
+                      value={selectedClassId}
+                      onChange={(e) => {
+                        setSelectedClassId(e.target.value);
+                        setSheet(null);
+                        setStudents([]);
+                        setClassMeta(null);
+                        setMaxHoursPerDay(null);
+                        lastLoadKeyRef.current = "";
+                      }}
                     >
-                      <option value="">Toutes</option>
-                      {options.map(([lab]) => (
-                        <option key={lab} value={lab}>
-                          {lab}
+                      <option value="">
+                        {loadingClasses ? "Chargement..." : "-- Sélectionner --"}
+                      </option>
+                      {classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title || c.abbrev || c.displayName || c.id}
                         </option>
                       ))}
                     </select>
-                  </div>
-                )}
+                  </Field>
 
-                <div style={styles.field}>
-                  <label style={styles.label}>Cycle</label>
-                  <select
-                    style={styles.select}
-                    value={cycle}
-                    onChange={(e) => {
-                      setCycle(e.target.value);
-                      setStudyYear("");
-                    }}
-                  >
-                    <option value="">Tous</option>
-                    <option value="BTS">BTS</option>
-                    <option value="LICENCE">LICENCE</option>
-                    <option value="MASTER">MASTER</option>
-                    <option value="INGÉNIEUR">INGÉNIEUR</option>
-                  </select>
+                  <Field label="Période Du (ex: 05 Jan 2025)">
+                    <input
+                      style={inputPill}
+                      type="date"
+                      value={periodFrom}
+                      onChange={(e) => {
+                        setPeriodFrom(e.target.value);
+                        lastLoadKeyRef.current = "";
+                      }}
+                    />
+                  </Field>
+
+                  <Field label="Au (ex: 09 Jan 2025)">
+                    <input
+                      style={inputPill}
+                      type="date"
+                      value={periodTo}
+                      onChange={(e) => {
+                        setPeriodTo(e.target.value);
+                        lastLoadKeyRef.current = "";
+                      }}
+                    />
+                    <div style={headerStyles.help}>
+                      Format: <strong>DD Mmm YYYY</strong> (ex: 05 Jan 2025)
+                      <br />
+                      Règle: BTS/Ingénieur = <strong>5 jours</strong>, Licence ={" "}
+                      <strong>6 jours</strong>.
+                    </div>
+                  </Field>
                 </div>
 
-                <div style={styles.field}>
-                  <label style={styles.label}>Année d’étude</label>
-                  <select
-                    style={styles.select}
-                    value={studyYear}
-                    onChange={(e) => setStudyYear(e.target.value)}
+                <div style={headerStyles.actionsRow}>
+                  <button
+                    type="button"
+                    style={headerStyles.btnPrimary}
+                    onClick={handleSave}
+                    disabled={saving || loading || !sheet}
                   >
-                    <option value="">Toutes</option>
-                    {[1, 2, 3, 4, 5].map((y) => (
-                      <option key={y} value={y}>
-                        {y}e année
-                      </option>
-                    ))}
-                  </select>
+                    <Save size={16} />
+                    <span>{saving ? "Enregistrement…" : "Enregistrer"}</span>
+                  </button>
                 </div>
+              </div>
+            </section>
 
-                <div style={styles.fieldWide}>
-                  <label style={styles.label}>Période (ex: 24 au 28 Nov 2025)</label>
-                  <input
-                    style={styles.input}
-                    value={periode}
-                    onChange={(e) => setPeriode(e.target.value)}
-                    placeholder="Période de la fiche"
-                  />
+            {/* ---------------- Table ---------------- */}
+            <section style={entryStyles.card}>
+              <div style={entryStyles.headerRow}>
+                <div>
+                  <h2 style={entryStyles.title}>Saisie des absences</h2>
+                  <p style={entryStyles.subtitle}>
+                    Saisis les heures d’absence par jour (0 → max/jour selon le cycle).
+                  </p>
+
+                  {!selectedClassId && (
+                    <p style={entryStyles.warn}>Choisis une classe.</p>
+                  )}
+                  {selectedClassId && (!periodFrom || !periodTo) && (
+                    <p style={entryStyles.warn}>Choisis la période (Du / Au).</p>
+                  )}
                 </div>
               </div>
 
-              <div style={styles.headerActions}>
-                <div style={styles.countPill}>
-                  {loading
-                    ? "Chargement..."
-                    : `${filteredStudents.length} étudiant(s)`}
-                </div>
+              <div style={entryStyles.tableWrapper}>
+                {!sheet ? (
+                  <div style={entryStyles.emptyStateBox}>
+                    Renseigne les champs (classe + dates) : la fiche se charge automatiquement.
+                  </div>
+                ) : sortedStudents.length === 0 ? (
+                  <div style={entryStyles.emptyStateBox}>
+                    Aucun étudiant dans cette classe.
+                  </div>
+                ) : (
+                  <table style={entryStyles.table}>
+                    <thead>
+                      <tr>
+                        <th style={entryStyles.thIndex}>#</th>
+                        <th style={entryStyles.thMatricule}>Matricule</th>
+                        <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
+                        {(sheet.dayLabels || []).map((lab, i) => (
+                          <th key={`${lab}-${i}`} style={entryStyles.thDay}>
+                            {lab}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {sortedStudents.map((s, idx) => {
+                        const key = keyForStudent(s) || String(idx);
+                        const isActiveRow = activeStudentKey === key;
+
+                        const tdBase = isActiveRow
+                          ? { ...entryStyles.tdBase, ...stylesActiveCell }
+                          : entryStyles.tdBase;
+
+                        return (
+                          <tr key={key} style={isActiveRow ? stylesActiveRow : undefined}>
+                            <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
+                            <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>
+                              {s.matricule || "—"}
+                            </td>
+                            <td style={{ ...entryStyles.tdName, ...tdBase }}>
+                              {(s.fullName || "").toUpperCase()}
+                            </td>
+
+                            {(sheet.dates || []).map((dateISO) => {
+                              const val = getHoursValue(s, dateISO);
+                              const max =
+                                typeof maxHoursPerDay === "number" ? maxHoursPerDay : 8;
+
+                              return (
+                                <td
+                                  key={`${key}-${dateISO}`}
+                                  style={{ ...entryStyles.tdDay, ...tdBase }}
+                                >
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={max}
+                                    step="0.5"
+                                    value={val}
+                                    onChange={(e) => setHoursValue(s, dateISO, e.target.value)}
+                                    onFocus={() => setActiveStudentKey(key)}
+                                    onBlur={() => setActiveStudentKey("")}
+                                    style={{
+                                      ...entryStyles.dayInput,
+                                      ...(isActiveRow ? stylesActiveInput : null),
+                                    }}
+                                    title={`Absence (heures) - ${dateISO}`}
+                                  />
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
+              <div style={entryStyles.footerRow}>
                 <button
-                  style={styles.primaryBtn}
-                  onClick={() => setOpenSheet(true)}
-                  disabled={filteredStudents.length === 0}
+                  type="button"
+                  style={entryStyles.btnPrimary}
+                  onClick={handleSave}
+                  disabled={saving || loading || !sheet}
                 >
-                  Prévisualiser la fiche
+                  {saving ? "Enregistrement…" : "Enregistrer"}
                 </button>
               </div>
-            </div>
-
-            {/* petite preview list */}
-            <div style={styles.listCard}>
-              <h3 style={styles.h3}>Étudiants de la classe sélectionnée</h3>
-              {filteredStudents.length === 0 ? (
-                <p style={styles.empty}>
-                  Aucun étudiant avec ces filtres.
-                </p>
-              ) : (
-                <ol style={styles.ol}>
-                  {filteredStudents.map((s, i) => (
-                    <li key={s.id || i} style={styles.li}>
-                      {(s.lastName || "").toUpperCase()} {s.firstName || ""}
-                      {s.matricule ? (
-                        <span style={styles.matricule}> · {s.matricule}</span>
-                      ) : null}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
+            </section>
           </div>
         </div>
       </main>
-
-      {openSheet && (
-        <PresenceSheetModal
-          onClose={() => setOpenSheet(false)}
-          students={filteredStudents}
-          days={days}
-          classLabel={classLabel}
-          academicYear={academicYear}
-          periode={periode}
-        />
-      )}
     </div>
   );
 }
 
-/* ---------------- MODAL FICHE + PRINT/PDF ---------------- */
+/* ---------------- UI helpers ---------------- */
 
-function PresenceSheetModal({
-  students,
-  days,
-  classLabel,
-  academicYear,
-  periode,
-  onClose,
-}) {
-  const sheetRef = useRef(null);
-  const [busy, setBusy] = useState(false);
-
-  const waitForAssets = async (rootEl) => {
-    try {
-      if (document?.fonts?.ready) await document.fonts.ready;
-    } catch (_) {}
-    if (!rootEl) return;
-
-    const imgs = Array.from(rootEl.querySelectorAll("img"));
-    await Promise.all(
-      imgs.map(
-        (img) =>
-          new Promise((resolve) => {
-            if (img.complete && img.naturalWidth > 0) return resolve();
-            const done = () => resolve();
-            img.addEventListener("load", done, { once: true });
-            img.addEventListener("error", done, { once: true });
-          })
-      )
-    );
-  };
-
-  const capture = async () => {
-    const el = sheetRef.current;
-    if (!el) throw new Error("Sheet introuvable");
-    await waitForAssets(el);
-
-    const canvas = await html2canvas(el, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-      logging: false,
-      onclone: (doc) => {
-        // ⚠️ Fix "oklch" : on neutralise toute couleur moderne dans le clone
-        const style = doc.createElement("style");
-        style.innerHTML = `
-          * {
-            color: #000 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            text-shadow: none !important;
-            filter: none !important;
-          }
-          .presence-sheet-root {
-            background: #fff !important;
-          }
-          table, th, td { border-color:#000 !important; }
-        `;
-        doc.head.appendChild(style);
-      },
-    });
-
-    return canvas;
-  };
-
-  const handleDownloadPdf = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const canvas = await capture();
-      const imgData = canvas.toDataURL("image/png");
-
-      // A4 paysage
-      const pdf = new jsPDF("l", "mm", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      const y = (pageHeight - imgHeight) / 2;
-
-      pdf.addImage(imgData, "PNG", 0, y, imgWidth, imgHeight);
-
-      const d = new Date().toISOString().slice(0, 10);
-      pdf.save(`fiche-presence-${classLabel}-${d}.pdf`);
-    } catch (e) {
-      console.error(e);
-      alert("Impossible de générer le PDF.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handlePrint = async () => {
-    if (busy) return;
-    setBusy(true);
-
-    const win = window.open("", "_blank");
-    if (!win) {
-      setBusy(false);
-      alert("La fenêtre d'impression a été bloquée.");
-      return;
-    }
-
-    win.document.write(`
-      <html><head><title>Fiche présence</title>
-      <style>
-        body { margin:0; padding:0; font-family: Arial, sans-serif; }
-        img { width:100%; display:block; }
-      </style></head>
-      <body><p style="padding:12px;">Préparation...</p></body></html>
-    `);
-    win.document.close();
-
-    try {
-      const canvas = await capture();
-      const src = canvas.toDataURL("image/png");
-
-      win.document.open();
-      win.document.write(`
-        <html><head><title>Fiche présence</title>
-        <style>
-          body { margin:0; padding:0; font-family: Arial, sans-serif; }
-          img { width:100%; display:block; }
-        </style></head>
-        <body><img src="${src}" /></body></html>
-      `);
-      win.document.close();
-
-      win.focus();
-      win.print();
-    } catch (e) {
-      console.error(e);
-      win.close();
-      alert("Impossible d'imprimer.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
+function Field({ label, children }) {
   return (
-    <div style={sheetStyles.overlay}>
-      <div style={sheetStyles.modal}>
-        <header style={sheetStyles.header}>
-          <div>
-            <h2 style={sheetStyles.title}>Prévisualisation fiche de présence</h2>
-            <p style={sheetStyles.sub}>
-              Format A4 paysage · {students.length} étudiant(s)
-            </p>
-          </div>
-          <button onClick={onClose} style={sheetStyles.closeBtn}>✕</button>
-        </header>
-
-        <div style={sheetStyles.previewWrap}>
-          <div ref={sheetRef} className="presence-sheet-root" style={sheetStyles.sheet}>
-            <PresenceSheetTable
-              students={students}
-              days={days}
-              classLabel={classLabel}
-              academicYear={academicYear}
-              periode={periode}
-            />
-          </div>
-        </div>
-
-        <footer style={sheetStyles.footer}>
-          <button onClick={onClose} style={sheetStyles.secondaryBtn}>
-            Fermer
-          </button>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={handlePrint}
-              disabled={busy}
-              style={{
-                ...sheetStyles.outlineBtn,
-                opacity: busy ? 0.6 : 1,
-                cursor: busy ? "not-allowed" : "pointer",
-              }}
-            >
-              {busy ? "Préparation..." : "Imprimer"}
-            </button>
-            <button
-              onClick={handleDownloadPdf}
-              disabled={busy}
-              style={{
-                ...sheetStyles.primaryBtn,
-                opacity: busy ? 0.6 : 1,
-                cursor: busy ? "not-allowed" : "pointer",
-              }}
-            >
-              {busy ? "Génération..." : "Générer en PDF"}
-            </button>
-          </div>
-        </footer>
-      </div>
+    <div style={headerStyles.field}>
+      <label style={headerStyles.label}>{label}</label>
+      {children}
     </div>
   );
 }
 
-function PresenceSheetTable({ students, days, classLabel, academicYear, periode }) {
-  const logoSrc = "/assets/ipmbtpe-header.png";
+const inputPill = {
+  height: 38,
+  borderRadius: 999,
+  border: "1px solid var(--border)",
+  padding: "0 0.9rem",
+  fontSize: ".85rem",
+  background: "var(--bg-input, #f9fafb)",
+  outline: "none",
+  minWidth: 0,
+  width: "100%",
+  boxSizing: "border-box",
+};
 
-  return (
-    <div style={tableStyles.root}>
-      {/* header fiche */}
-      <div style={tableStyles.topHeader}>
-        <div style={tableStyles.schoolBlock}>
-          <div style={tableStyles.schoolName}>
-            Institut Polytechnique des Métiers du Bâtiment, des Travaux Publics et de l’Entrepreneuriat
-          </div>
-          <div style={tableStyles.metaRow}>
-            <div><b>Spécialité / Classe :</b> {classLabel || "—"}</div>
-            <div><b>Année académique :</b> {academicYear || "—"}</div>
-            <div><b>Période :</b> {periode || "—"}</div>
-          </div>
-        </div>
-        <div style={tableStyles.logoBox}>
-          <img
-            src={logoSrc}
-            alt="IPMBTPE"
-            crossOrigin="anonymous"
-            style={{ width: "100%", height: "auto" }}
-            onError={(e) => (e.currentTarget.style.display = "none")}
-          />
-        </div>
-      </div>
+// ✅ CASE active (input)
+const stylesActiveInput = {
+  background: "#F0FDFA",
+  border: "1px solid #22C55E",
+  boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18)",
+};
 
-      <div style={tableStyles.titleBar}>FICHE DE PRÉSENCE</div>
+// ✅ LIGNE active (toute la ligne)
+const stylesActiveRow = {
+  background: "#F0FDFA",
+};
 
-      {/* tableau */}
-      <table style={tableStyles.table}>
-        <thead>
-          <tr>
-            <th style={{...tableStyles.th, ...tableStyles.thNum}}>N°</th>
-            <th style={{...tableStyles.th, ...tableStyles.thName}}>NOMS & PRÉNOMS</th>
-            {days.map((d) => (
-              <th key={d} style={tableStyles.thDay}>{d.toUpperCase()}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {students.map((s, i) => (
-            <tr key={s.id || i}>
-              <td style={tableStyles.tdNum}>{i + 1}</td>
-              <td style={tableStyles.tdName}>
-                {(s.lastName || "").toUpperCase()} {s.firstName || ""}
-              </td>
-              {days.map((d) => (
-                <td key={d} style={tableStyles.tdDay}></td>
-              ))}
-            </tr>
-          ))}
+// ✅ CELLULES actives (pour “encadrer” la ligne)
+const stylesActiveCell = {
+  borderTop: "1px solid #22C55E",
+  borderBottom: "1px solid #22C55E",
+};
 
-          {/* lignes vides pour compléter la feuille */}
-          {Array.from({ length: Math.max(0, 25 - students.length) }).map((_, k) => (
-            <tr key={`empty-${k}`}>
-              <td style={tableStyles.tdNum}>{students.length + k + 1}</td>
-              <td style={tableStyles.tdName}></td>
-              {days.map((d) => (
-                <td key={d} style={tableStyles.tdDay}></td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div style={tableStyles.signatureRow}>
-        <div style={tableStyles.signatureBox}>
-          Enseignant + signature :
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------- STYLES (simple HEX uniquement) ---------------- */
+/* ========================= Styles ========================= */
 
 const styles = {
   layout: {
@@ -690,225 +608,210 @@ const styles = {
     padding: "0 1.5rem 1.5rem",
     display: "flex",
     flexDirection: "column",
-    gap: "1rem",
+    gap: "1.5rem",
   },
-
-  headerCard: {
-    background: "#fff",
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    padding: "1rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1rem",
-  },
-  h2: { margin: 0, fontSize: "1.1rem", fontWeight: 800 },
-  sub: { margin: 0, color: "#6B7280", fontSize: ".9rem" },
-
-  filtersGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
-    gap: 12,
-  },
-  field: { display: "flex", flexDirection: "column", gap: 6 },
-  fieldWide: { display: "flex", flexDirection: "column", gap: 6, gridColumn: "span 3" },
-  label: { fontSize: ".8rem", fontWeight: 700, color: "#111827" },
-  select: {
-    height: 40,
-    borderRadius: 8,
-    border: "1px solid #D1D5DB",
-    padding: "0 .6rem",
-    background: "#fff",
-  },
-  input: {
-    height: 40,
-    borderRadius: 8,
-    border: "1px solid #D1D5DB",
-    padding: "0 .6rem",
-    background: "#fff",
-  },
-
-  headerActions: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-  },
-  countPill: {
-    background: "#ECFDF3",
-    border: "1px solid #A7F3D0",
-    color: "#047857",
-    fontWeight: 800,
-    padding: "6px 10px",
-    borderRadius: 999,
-    fontSize: ".85rem",
-  },
-  primaryBtn: {
-    borderRadius: 999,
-    border: "none",
-    background: "#059669",
-    color: "#fff",
-    padding: "0.55rem 1.2rem",
-    fontSize: ".9rem",
-    cursor: "pointer",
-    fontWeight: 800,
-  },
-
-  listCard: {
-    background: "#fff",
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    padding: "1rem",
-  },
-  h3: { margin: 0, fontSize: "1rem", fontWeight: 800 },
-  empty: { marginTop: 8, color: "#6B7280" },
-  ol: { marginTop: 8, paddingLeft: 18 },
-  li: { padding: "2px 0", fontSize: ".9rem" },
-  matricule: { color: "#6B7280", fontSize: ".85rem" },
 };
 
-const sheetStyles = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,.35)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 3000,
-    padding: "1rem",
-  },
-  modal: {
-    width: "95vw",
-    maxWidth: 1300,
-    maxHeight: "95vh",
-    background: "#fff",
+const headerStyles = {
+  card: {
+    background: "var(--bg)",
     borderRadius: 12,
+    border: "1px solid var(--border)",
+    padding: "1rem 1.25rem",
+    display: "flex",
+    gap: "1rem",
+    alignItems: "flex-start",
+  },
+  left: { flex: 1, minWidth: 0 },
+  right: {
+    flex: 1.3,
+    minWidth: 0,
     display: "flex",
     flexDirection: "column",
-    overflow: "hidden",
+    gap: "0.75rem",
+    alignItems: "flex-end",
   },
-  header: {
-    padding: "0.8rem 1rem",
-    borderBottom: "1px solid #E5E7EB",
+  title: { margin: 0, fontSize: "1.05rem", fontWeight: 700 },
+  subtitle: { margin: "4px 0 0", fontSize: ".85rem", color: "var(--ip-gray)" },
+  badge: {
+    marginTop: 8,
+    display: "inline-block",
+    padding: "3px 10px",
+    borderRadius: 999,
+    fontSize: ".75rem",
+    background: "#ECFEFF",
+    color: "#0369A1",
+    border: "1px solid #7DD3FC",
+  },
+  classInfo: { marginTop: 6, fontSize: ".8rem", color: "#4B5563" },
+  subjectInfo: { marginTop: 2, fontSize: ".8rem", color: "#111827" },
+  filtersRow: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    gap: ".5rem",
+    flexWrap: "wrap",
+    width: "100%",
+    alignItems: "flex-start",
   },
-  title: { margin: 0, fontSize: "1rem", fontWeight: 800 },
-  sub: { margin: 0, fontSize: ".85rem", color: "#6B7280" },
-  closeBtn: { border: "none", background: "transparent", cursor: "pointer", fontSize: "1.1rem" },
-
-  previewWrap: {
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minWidth: 0,
     flex: 1,
-    background: "#F3F4F6",
-    overflow: "auto",
-    padding: 12,
-    display: "flex",
-    justifyContent: "center",
   },
-
-  // A4 paysage ~ 1123 x 794 à 96dpi
-  sheet: {
-    width: 1123,
-    minHeight: 794,
-    background: "#fff",
-    boxShadow: "0 0 0 1px #E5E7EB",
-    padding: 12,
-    boxSizing: "border-box",
+  label: { fontSize: ".75rem", fontWeight: 600, color: "var(--ip-gray)" },
+  help: {
+    marginTop: 6,
+    fontSize: ".75rem",
+    color: "#6B7280",
+    lineHeight: 1.35,
   },
-
-  footer: {
-    padding: "0.8rem 1rem",
-    borderTop: "1px solid #E5E7EB",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  secondaryBtn: {
-    borderRadius: 999,
-    border: "1px solid #D1D5DB",
-    background: "#fff",
-    padding: "0.45rem 1.1rem",
-    fontSize: ".9rem",
-    cursor: "pointer",
-  },
-  outlineBtn: {
-    borderRadius: 999,
-    border: "1px solid #059669",
-    background: "#fff",
-    color: "#059669",
-    padding: "0.45rem 1.1rem",
-    fontSize: ".9rem",
-    cursor: "pointer",
-    fontWeight: 700,
-  },
-  primaryBtn: {
+  actionsRow: { display: "flex", gap: 10, flexWrap: "wrap" },
+  btnPrimary: {
     borderRadius: 999,
     border: "none",
-    background: "#059669",
+    background: "#00b89c",
     color: "#fff",
-    padding: "0.45rem 1.1rem",
-    fontSize: ".9rem",
+    padding: "0.55rem 1.1rem",
+    fontSize: ".85rem",
+    fontWeight: 700,
     cursor: "pointer",
-    fontWeight: 800,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
   },
 };
 
-const tableStyles = {
-  root: { width: "100%", color: "#000", background: "#fff", fontFamily: "Arial, sans-serif" },
-
-  topHeader: {
+const entryStyles = {
+  card: {
+    background: "#fff",
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    padding: "1rem 1.25rem 0.75rem",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.75rem",
+  },
+  headerRow: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "stretch",
-    gap: 12,
-    border: "2px solid #000",
-    padding: 8,
+    alignItems: "flex-start",
   },
-  schoolBlock: { flex: 1, display: "flex", flexDirection: "column", gap: 6 },
-  schoolName: { fontWeight: 800, fontSize: "0.95rem", lineHeight: 1.25 },
-  metaRow: { display: "flex", gap: 14, fontSize: "0.85rem", flexWrap: "wrap" },
-  logoBox: { width: 220, display: "flex", alignItems: "center" },
+  title: { margin: 0, fontSize: "1rem", fontWeight: 600 },
+  subtitle: { margin: "4px 0 0", fontSize: ".8rem", color: "#6B7280" },
+  warn: { margin: "8px 0 0", fontSize: ".8rem", color: "#B45309" },
 
-  titleBar: {
-    marginTop: 6,
-    border: "2px solid #000",
-    borderTop: "none",
-    textAlign: "center",
-    fontWeight: 900,
-    padding: "6px 0",
-    fontSize: "1rem",
-    letterSpacing: 0.6,
+  tableWrapper: {
+    marginTop: 8,
+    borderRadius: 12,
+    border: "1px solid #E5E7EB",
+    overflow: "auto",
   },
-
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    marginTop: 8,
+    fontSize: ".85rem",
+    minWidth: 900,
   },
-  th: {
-    border: "1px solid #000",
-    fontSize: "0.8rem",
-    padding: "6px 4px",
+
+  tdBase: {},
+
+  thIndex: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "left",
+    width: 40,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
+  },
+  thMatricule: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "left",
+    width: 190,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
+    whiteSpace: "nowrap",
+  },
+  thName: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
+    textAlign: "left",
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
+    minWidth: 240,
+  },
+  thDay: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #E5E7EB",
     textAlign: "center",
-    fontWeight: 900,
+    minWidth: 120,
+    fontWeight: 600,
+    fontSize: ".8rem",
+    color: "#6B7280",
+    whiteSpace: "nowrap",
   },
-  thNum: { width: 40 },
-  thName: { width: 320, textAlign: "left", paddingLeft: 8 },
-  thDay: { width: 120 },
 
-  tdNum: { border: "1px solid #000", textAlign: "center", fontSize: "0.8rem", height: 28 },
-  tdName: { border: "1px solid #000", fontSize: "0.85rem", paddingLeft: 8 },
-  tdDay: { border: "1px solid #000", height: 28 },
+  tdIndex: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".8rem",
+    color: "#6B7280",
+  },
+  tdMatricule: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".8rem",
+    color: "#111827",
+    whiteSpace: "nowrap",
+  },
+  tdName: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    fontSize: ".85rem",
+    color: "#111827",
+  },
+  tdDay: {
+    padding: "8px 10px",
+    borderBottom: "1px solid #F3F4F6",
+    textAlign: "center",
+  },
 
-  signatureRow: { marginTop: 8, display: "flex", justifyContent: "flex-start" },
-  signatureBox: {
-    border: "1px solid #000",
-    width: "100%",
-    height: 40,
-    padding: 6,
-    fontSize: "0.85rem",
+  dayInput: {
+    width: 78,
+    height: 32,
+    borderRadius: 8,
+    border: "1px solid #D1D5DB",
+    background: "#F9FAFB",
+    textAlign: "center",
+    fontSize: ".85rem",
+    outline: "none",
+  },
+
+  emptyStateBox: {
+    padding: "14px 12px",
+    fontSize: ".85rem",
+    color: "#6B7280",
+    background: "#fff",
+  },
+
+  footerRow: {
+    padding: "0.75rem 0.25rem 0.75rem",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  btnPrimary: {
+    borderRadius: 999,
+    border: "none",
+    background: "#00b89c",
+    color: "#fff",
+    padding: "0.55rem 1.2rem",
+    fontSize: ".85rem",
     fontWeight: 700,
+    cursor: "pointer",
   },
 };

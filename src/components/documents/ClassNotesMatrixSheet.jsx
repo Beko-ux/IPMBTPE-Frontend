@@ -281,7 +281,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
       <div style={styles.modal}>
         <header style={styles.modalHeader}>
           <div>
-            <h2 style={styles.modalTitle}>Notes de Contrôle Continu (classe) — A4 paysage</h2>
+            <h2 style={styles.modalTitle}>Procès-verbal(classe) — A4 paysage</h2>
             <p style={styles.modalSubtitle}>
               Sélectionne Année / Classe / Semestre / Examen / Session, puis génère la liste.
             </p>
@@ -423,7 +423,7 @@ export default function ClassNotesMatrixSheet({ onClose }) {
                   </div>
                 </div>
 
-                <div style={sheetStyles.titleRow}>Notes de Contrôle Continu ({classFullName || "CLASSE"})</div>
+                <div style={sheetStyles.titleRow}>Procès Verbal ({classFullName || "CLASSE"})</div>
 
                 <div style={sheetStyles.tableWrap}>
                   <table style={sheetStyles.table}>
@@ -814,7 +814,7 @@ function generateNotesMatrixPDFHTML({
             <span><b>Spécialité :</b> ${escapeHtml(safeSpec)}</span>
           </div>
 
-          <div class="title">Notes de Contrôle Continu (${escapeHtml(safeClass)})</div>
+          <div class="title">Procès Verbal (${escapeHtml(safeClass)})</div>
 
           ${
             legendOnRight

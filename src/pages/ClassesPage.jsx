@@ -68,19 +68,55 @@ function downloadCSV(filename, rows) {
 
 /* ===== PDF via print HTML ===== */
 
-function roleBadgeHTML(label, bg) {
-  if (!label || label === "Aucune") return "";
+/** ✅ Tri alphabétique par fullName, fallback matricule */
+function sortStudentsAlpha(list = []) {
+  return [...list].sort((a, b) => {
+    const na = (a.fullName || "").toString().trim().toUpperCase();
+    const nb = (b.fullName || "").toString().trim().toUpperCase();
+    if (na !== nb) return na.localeCompare(nb);
+
+    const ma = (a.matricule || "").toString().trim().toUpperCase();
+    const mb = (b.matricule || "").toString().trim().toUpperCase();
+    return ma.localeCompare(mb);
+  });
+}
+
+/** ✅ Entête établissement (comme vos autres fiches) */
+function getSchoolHeaderHTML() {
+  const logoSrc = "/assets/ipmbtpe-logo.png";
+
   return `
-    <span class="badge" style="background:${bg}">
-      ${label}
-    </span>
+    <div class="school-header">
+      <div class="school-header-row">
+        <div class="school-logo">
+          <img src="${logoSrc}" alt="IPMBTPE" />
+        </div>
+        <div class="school-text">
+          <div class="school-name">
+            Institut Polytechnique des Métiers du Bâtiment,<br/>
+            des Travaux Publics et de l’Entrepreneuriat
+          </div>
+          <div class="school-subtitle">
+            <strong><em>Autorisation d’ouverture N°25-01077/MINESUP/SG/DDES/SD-ESUP/SDA/AOS du 26 mars 2025</em></strong>
+          </div>
+          <div class="school-contact">
+            BP : 16398 Mfou / Tél : (+237) 696 79 58 05 - 672 83 80 94 · Site web : www.ipmbtpe.cm · E-mail : ipmbtpe@gmail.com
+          </div>
+        </div>
+      </div>
+      <div class="school-underline"></div>
+    </div>
   `;
 }
 
+/** ✅ PDF (tableau comme sur l'image) - SANS représentants + AVEC ENTÊTE */
 function exportClassToPDF(cls) {
-  const reps = (cls.students || []).filter((s) =>
-    isClassRepresentativeRole(s.classRole)
-  );
+  const allStudents = sortStudentsAlpha(cls.students || []);
+
+  // ✅ effectif exact = taille réelle de la liste
+  const effectifExact = Array.isArray(cls.students)
+    ? cls.students.length
+    : Number(cls.effectif || 0);
 
   const html = `
 <!DOCTYPE html>
@@ -93,15 +129,28 @@ function exportClassToPDF(cls) {
     body {
       font-family: Arial, sans-serif;
       color: #111;
-      font-size: 12.5px;
+      font-size: 12px;
       margin: 0;
       padding: 0;
+      background: #fff;
     }
+
+    /* ✅ entête */
+    .school-header { margin-bottom: 10px; }
+    .school-header-row { display:flex; align-items:flex-start; gap: 12px; }
+    .school-logo img { width: 105px; height: auto; }
+    .school-text { flex: 1; text-align: center; }
+    .school-name { font-size: 16px; font-weight: 700; line-height: 1.25; margin-bottom: 3px; }
+    .school-subtitle { font-size: 10px; font-weight: 700; font-style: italic; margin-bottom: 2px; }
+    .school-contact { font-size: 10px; }
+    .school-underline { border-bottom: 3px solid #00b89c; margin: 6px 0 0 0; }
+
     .card {
       border: 1px solid #e6e8ee;
       border-radius: 12px;
       padding: 16px 18px;
     }
+
     .header {
       display:flex;
       justify-content:space-between;
@@ -110,16 +159,19 @@ function exportClassToPDF(cls) {
       padding-bottom: 10px;
       border-bottom: 1px solid #e6e8ee;
     }
+
     .title {
       font-size: 18px;
       font-weight: 700;
       margin: 0;
     }
+
     .subtitle {
       margin-top: 4px;
       color: #6b7280;
       font-size: 13px;
     }
+
     .pill {
       border: 1px solid #e6e8ee;
       border-radius: 999px;
@@ -127,76 +179,65 @@ function exportClassToPDF(cls) {
       font-weight: 700;
       font-size: 12.5px;
     }
+
     .section {
       margin-top: 14px;
       padding-top: 10px;
       border-top: 1px solid #f1f2f5;
     }
+
     .section-title {
       font-weight: 700;
       font-size: 13px;
       margin-bottom: 8px;
     }
-    .row {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding: 6px 0;
-      border-bottom: 1px dashed #e6e8ee;
-      gap: 10px;
-    }
-    .left {
-      flex: 1;
-      min-width: 0;
-    }
-    .name {
-      font-weight: 700;
-      font-size: 13px;
-      margin: 0;
-    }
-    .mat {
-      margin: 2px 0 0 0;
-      color: #6b7280;
+
+    /* ✅ tableau noir/blanc (comme l'image) */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
       font-size: 12px;
     }
-    .right {
-      display:flex;
-      align-items:center;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content:flex-end;
-      max-width: 260px;
-      text-align:right;
+    th, td {
+      border: 1px solid #000;
+      padding: 6px 8px;
+      vertical-align: middle;
     }
-    .badge {
-      display:inline-flex;
-      align-items:center;
-      padding: 3px 10px;
-      border-radius: 999px;
-      color: #fff;
+    th {
       font-weight: 700;
-      font-size: 11.5px;
-      white-space: nowrap;
+      text-align: center;
     }
-    .phone {
-      color:#6b7280;
-      font-size: 12px;
-      margin-left: 4px;
-      white-space: nowrap;
+    .col-n {
+      width: 36px;
+      text-align: center;
     }
+    .col-mat {
+      width: 130px;
+      text-align: center;
+      font-family: "Courier New", monospace;
+      font-size: 11px;
+    }
+    .col-name {
+      text-align: left;
+    }
+
     .empty {
       color:#6b7280;
       font-style: italic;
       font-size: 12px;
+      margin-top: 8px;
     }
   </style>
 </head>
 <body>
+  ${getSchoolHeaderHTML()}
+
   <div class="card">
     <div class="header">
       <div>
         <h1 class="title">${cls.title || "Classe"}</h1>
-        <div class="subtitle">Effectif : ${cls.effectif || 0} étudiant(s)</div>
+        <div class="subtitle">Effectif : ${effectifExact} étudiant(s)</div>
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
         <div class="pill">${cls.abbrev || "—"}</div>
@@ -204,52 +245,37 @@ function exportClassToPDF(cls) {
     </div>
 
     <div class="section">
-      <div class="section-title">Représentants de la classe</div>
-      ${
-        reps.length === 0
-          ? `<div class="empty">Aucun représentant renseigné.</div>`
-          : reps
-              .map(
-                (s) => `
-        <div class="row">
-          <div class="left">
-            <p class="name">${s.fullName || ""}</p>
-            <p class="mat">${s.matricule || ""}</p>
-          </div>
-          <div class="right">
-            ${roleBadgeHTML(s.classRole, "#FF8200")}
-            ${roleBadgeHTML(s.schoolRole, "#00A082")}
-            ${s.contact ? `<span class="phone">${s.contact}</span>` : ""}
-          </div>
-        </div>
-      `
-              )
-              .join("")
-      }
-    </div>
-
-    <div class="section">
       <div class="section-title">Liste complète de la classe</div>
+
       ${
-        (cls.students || [])
-          .map(
-            (s) => `
-        <div class="row">
-          <div class="left">
-            <p class="name">${s.fullName || ""} ${
-              isClassRepresentativeRole(s.classRole) ? "👑" : ""
-            }</p>
-            <p class="mat">${s.matricule || ""}</p>
-          </div>
-          <div class="right">
-            ${roleBadgeHTML(s.classRole, "#FF8200")}
-            ${roleBadgeHTML(s.schoolRole, "#F50057")}
-            ${s.contact ? `<span class="phone">${s.contact}</span>` : ""}
-          </div>
-        </div>
+        allStudents.length
+          ? `
+        <table>
+          <thead>
+            <tr>
+              <th class="col-n">N°</th>
+              <th class="col-mat">Matricule</th>
+              <th class="col-name">Noms et prénoms</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${allStudents
+              .map((s, idx) => {
+                const full = (s.fullName || "").toString().toUpperCase();
+                const mat = (s.matricule || "").toString();
+                return `
+                  <tr>
+                    <td class="col-n">${idx + 1}</td>
+                    <td class="col-mat">${mat}</td>
+                    <td class="col-name">${full}</td>
+                  </tr>
+                `;
+              })
+              .join("")}
+          </tbody>
+        </table>
       `
-          )
-          .join("") || `<div class="empty">Aucun étudiant.</div>`
+          : `<div class="empty">Aucun étudiant.</div>`
       }
     </div>
   </div>
@@ -274,73 +300,65 @@ function exportClassToPDF(cls) {
   w.document.close();
 }
 
+/** ✅ PDF BULK (tableau comme l'image) - SANS représentants + AVEC ENTÊTE */
 function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
   const pages = classesList.map((cls) => {
-    const reps = (cls.students || []).filter((s) =>
-      isClassRepresentativeRole(s.classRole)
-    );
+    const allStudents = sortStudentsAlpha(cls.students || []);
+    const effectifExact = Array.isArray(cls.students)
+      ? cls.students.length
+      : Number(cls.effectif || 0);
 
     return `
-      <div class="card">
-        <div class="header">
-          <div>
-            <h1 class="title">${cls.title || "Classe"}</h1>
-            <div class="subtitle">Effectif : ${cls.effectif || 0} étudiant(s)</div>
+      <div class="page">
+        ${getSchoolHeaderHTML()}
+
+        <div class="card">
+          <div class="header">
+            <div>
+              <h1 class="title">${cls.title || "Classe"}</h1>
+              <div class="subtitle">Effectif : ${effectifExact} étudiant(s)</div>
+            </div>
+            <div class="pill">${cls.abbrev || "—"}</div>
           </div>
-          <div class="pill">${cls.abbrev || "—"}</div>
+
+          <div class="section">
+            <div class="section-title">Liste complète de la classe</div>
+
+            ${
+              allStudents.length
+                ? `
+              <table>
+                <thead>
+                  <tr>
+                    <th class="col-n">N°</th>
+                    <th class="col-mat">Matricule</th>
+                    <th class="col-name">Noms et prénoms</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${allStudents
+                    .map((s, idx) => {
+                      const full = (s.fullName || "").toString().toUpperCase();
+                      const mat = (s.matricule || "").toString();
+                      return `
+                        <tr>
+                          <td class="col-n">${idx + 1}</td>
+                          <td class="col-mat">${mat}</td>
+                          <td class="col-name">${full}</td>
+                        </tr>
+                      `;
+                    })
+                    .join("")}
+                </tbody>
+              </table>
+            `
+                : `<div class="empty">Aucun étudiant.</div>`
+            }
+          </div>
         </div>
 
-        <div class="section">
-          <div class="section-title">Représentants de la classe</div>
-          ${
-            reps.length === 0
-              ? `<div class="empty">Aucun représentant renseigné.</div>`
-              : reps
-                  .map(
-                    (s) => `
-            <div class="row">
-              <div class="left">
-                <p class="name">${s.fullName || ""}</p>
-                <p class="mat">${s.matricule || ""}</p>
-              </div>
-              <div class="right">
-                ${roleBadgeHTML(s.classRole, "#FF8200")}
-                ${roleBadgeHTML(s.schoolRole, "#00A082")}
-                ${s.contact ? `<span class="phone">${s.contact}</span>` : ""}
-              </div>
-            </div>
-            `
-                  )
-                  .join("")
-          }
-        </div>
-
-        <div class="section">
-          <div class="section-title">Liste complète de la classe</div>
-          ${
-            (cls.students || [])
-              .map(
-                (s) => `
-            <div class="row">
-              <div class="left">
-                <p class="name">${s.fullName || ""} ${
-                  isClassRepresentativeRole(s.classRole) ? "👑" : ""
-                }</p>
-                <p class="mat">${s.matricule || ""}</p>
-              </div>
-              <div class="right">
-                ${roleBadgeHTML(s.classRole, "#FF8200")}
-                ${roleBadgeHTML(s.schoolRole, "#F50057")}
-                ${s.contact ? `<span class="phone">${s.contact}</span>` : ""}
-              </div>
-            </div>
-            `
-              )
-              .join("") || `<div class="empty">Aucun étudiant.</div>`
-          }
-        </div>
+        <div class="page-break"></div>
       </div>
-      <div class="page-break"></div>
     `;
   });
 
@@ -359,16 +377,29 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
     body {
       font-family: Arial, sans-serif;
       color: #111;
-      font-size: 12.5px;
+      font-size: 12px;
       margin: 0;
       padding: 0;
+      background: #fff;
     }
+
+    /* ✅ entête */
+    .school-header { margin-bottom: 10px; }
+    .school-header-row { display:flex; align-items:flex-start; gap: 12px; }
+    .school-logo img { width: 105px; height: auto; }
+    .school-text { flex: 1; text-align: center; }
+    .school-name { font-size: 16px; font-weight: 700; line-height: 1.25; margin-bottom: 3px; }
+    .school-subtitle { font-size: 10px; font-weight: 700; font-style: italic; margin-bottom: 2px; }
+    .school-contact { font-size: 10px; }
+    .school-underline { border-bottom: 3px solid #00b89c; margin: 6px 0 0 0; }
+
     .card {
       border: 1px solid #e6e8ee;
       border-radius: 12px;
       padding: 16px 18px;
       margin-bottom: 12px;
     }
+
     .header {
       display:flex;
       justify-content:space-between;
@@ -377,16 +408,19 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
       padding-bottom: 10px;
       border-bottom: 1px solid #e6e8ee;
     }
+
     .title {
       font-size: 18px;
       font-weight: 700;
       margin: 0;
     }
+
     .subtitle {
       margin-top: 4px;
       color: #6b7280;
       font-size: 13px;
     }
+
     .pill {
       border: 1px solid #e6e8ee;
       border-radius: 999px;
@@ -395,57 +429,51 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
       font-size: 12.5px;
       align-self: flex-start;
     }
+
     .section {
       margin-top: 14px;
       padding-top: 10px;
       border-top: 1px solid #f1f2f5;
     }
+
     .section-title {
       font-weight: 700;
       font-size: 13px;
       margin-bottom: 8px;
     }
-    .row {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding: 6px 0;
-      border-bottom: 1px dashed #e6e8ee;
-      gap: 10px;
+
+    /* ✅ tableau noir/blanc */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      font-size: 12px;
     }
-    .left { flex:1; min-width:0; }
-    .name { font-weight:700; font-size:13px; margin:0; }
-    .mat { margin:2px 0 0 0; color:#6b7280; font-size:12px; }
-    .right {
-      display:flex;
-      align-items:center;
-      gap:6px;
-      flex-wrap:wrap;
-      justify-content:flex-end;
-      max-width:260px;
-      text-align:right;
+    th, td {
+      border: 1px solid #000;
+      padding: 6px 8px;
+      vertical-align: middle;
     }
-    .badge {
-      display:inline-flex;
-      align-items:center;
-      padding: 3px 10px;
-      border-radius: 999px;
-      color: #fff;
+    th {
       font-weight: 700;
-      font-size: 11.5px;
-      white-space: nowrap;
+      text-align: center;
     }
-    .phone {
-      color:#6b7280;
-      font-size:12px;
-      margin-left:4px;
-      white-space:nowrap;
+    .col-n { width: 36px; text-align: center; }
+    .col-mat {
+      width: 130px;
+      text-align: center;
+      font-family: "Courier New", monospace;
+      font-size: 11px;
     }
+    .col-name { text-align: left; }
+
     .empty {
       color:#6b7280;
       font-style: italic;
       font-size: 12px;
+      margin-top: 8px;
     }
+
     .page-break { page-break-after: always; }
   </style>
 </head>
@@ -476,7 +504,7 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
   const [students, setStudents] = useState([]); // pour stats
   const [loading, setLoading] = useState(false);
 
-  // ✅ AJOUT UNIQUE: année académique + passage du paramètre year au fetch /classes
+  // année académique
   const [academicYear, setAcademicYear] = useState("2025-2026");
 
   const [search, setSearch] = useState("");
@@ -489,7 +517,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
   const loadData = async () => {
     setLoading(true);
     try {
-      // ✅ CHANGE MINIMUM: ajouter ?year=...
       const resClasses = await fetch(
         `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
       );
@@ -508,7 +535,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
     }
   };
 
-  // ✅ CHANGE MINIMUM: reload si l’année change (sinon inchangé)
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -599,9 +625,7 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
     }
 
     const file = sanitizeFileName(
-      `classes_${cycleFilter}_${bulkLevel}_${new Date()
-        .toISOString()
-        .slice(0, 10)}`
+      `classes_${cycleFilter}_${bulkLevel}_${new Date().toISOString().slice(0, 10)}`
     );
 
     downloadCSV(`${file}.csv`, rows);
@@ -623,17 +647,14 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
 
   return (
     <div style={sx.layout}>
-      {/* Colonne gauche */}
       <aside style={sx.left}>
         <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
       </aside>
 
-      {/* Colonne droite */}
       <main style={sx.right}>
         <HorizontalNavBar />
         <div style={sx.pageBody}>
           <div style={sx.container}>
-            {/* HEADER */}
             <header style={sx.pageHeader}>
               <div>
                 <h1 style={sx.pageTitle}>Gestion des Classes</h1>
@@ -643,7 +664,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
               </div>
             </header>
 
-            {/* ✅ AJOUT UNIQUE UI: champ année (le reste inchangé) */}
             <section style={sx.filtersCard}>
               <p style={sx.filtersTitle}>Année académique</p>
               <div style={{ marginTop: 10, maxWidth: 260 }}>
@@ -656,7 +676,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
               </div>
             </section>
 
-            {/* STAT CARDS */}
             <section style={sx.statsRow}>
               <StatCard
                 label="Classes actives"
@@ -680,7 +699,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
               />
             </section>
 
-            {/* FILTRES */}
             <section style={sx.filtersCard}>
               <p style={sx.filtersTitle}>Filtres</p>
               <p style={sx.filtersSub}>
@@ -743,7 +761,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
                 </button>
               </div>
 
-              {/* EXPORT MULTI */}
               <div style={sx.bulkExportRow}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={sx.bulkLabel}>Exporter plusieurs classes :</span>
@@ -784,7 +801,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
               </div>
             </section>
 
-            {/* LISTE DES CLASSES */}
             <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {loading && (
                 <p style={{ fontSize: ".9rem", color: "var(--ip-gray)" }}>
@@ -849,9 +865,7 @@ function ClassCard({ cls }) {
       <header style={sx.classHeader}>
         <div>
           <p style={sx.classTitle}>{cls.title}</p>
-          <p style={sx.classSubtitle}>
-            Effectif : {cls.effectif} étudiant(s)
-          </p>
+          <p style={sx.classSubtitle}>Effectif : {cls.effectif} étudiant(s)</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={sx.classCodeBox}>{cls.abbrev || "—"}</div>
@@ -912,7 +926,10 @@ function ClassCard({ cls }) {
                 <RoleBadge label={s.classRole} color={colors.orange} />
               )}
               {s.schoolRole !== "Aucune" && (
-                <RoleBadge label={s.schoolRole} color={colors.pink || "#f50057"} />
+                <RoleBadge
+                  label={s.schoolRole}
+                  color={colors.pink || "#f50057"}
+                />
               )}
               {s.contact && <span style={sx.stPhone}>{s.contact}</span>}
             </div>
@@ -962,12 +979,7 @@ const sx = {
     alignItems: "center",
   },
   pageTitle: { margin: 0, fontSize: "1.2rem", fontWeight: 700 },
-  pageSubtitle: {
-    margin: 0,
-    marginTop: 4,
-    fontSize: ".9rem",
-    color: "var(--ip-gray)",
-  },
+  pageSubtitle: { margin: 0, marginTop: 4, fontSize: ".9rem", color: "var(--ip-gray)" },
 
   statsRow: {
     display: "grid",
@@ -980,21 +992,9 @@ const sx = {
     border: `1px solid ${colors.border}`,
     padding: "0.9rem 1rem",
   },
-  statLabel: {
-    margin: 0,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
-  statValue: {
-    margin: "4px 0",
-    fontSize: "1.4rem",
-    fontWeight: 700,
-  },
-  statHelper: {
-    margin: 0,
-    fontSize: ".75rem",
-    color: "var(--ip-gray)",
-  },
+  statLabel: { margin: 0, fontSize: ".8rem", color: "var(--ip-gray)" },
+  statValue: { margin: "4px 0", fontSize: "1.4rem", fontWeight: 700 },
+  statHelper: { margin: 0, fontSize: ".75rem", color: "var(--ip-gray)" },
 
   filtersCard: {
     background: "#fff",
@@ -1002,17 +1002,8 @@ const sx = {
     border: `1px solid ${colors.border}`,
     padding: "1rem 1.25rem",
   },
-  filtersTitle: {
-    margin: 0,
-    fontWeight: 600,
-    fontSize: ".9rem",
-  },
-  filtersSub: {
-    margin: 0,
-    marginTop: 2,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
+  filtersTitle: { margin: 0, fontWeight: 600, fontSize: ".9rem" },
+  filtersSub: { margin: 0, marginTop: 2, fontSize: ".8rem", color: "var(--ip-gray)" },
   filtersRow: {
     marginTop: 12,
     display: "grid",
@@ -1058,11 +1049,7 @@ const sx = {
     gap: 10,
     flexWrap: "wrap",
   },
-  bulkLabel: {
-    fontSize: ".82rem",
-    fontWeight: 600,
-    color: "#333",
-  },
+  bulkLabel: { fontSize: ".82rem", fontWeight: 600, color: "#333" },
   selectSmall: {
     height: 36,
     borderRadius: 999,
@@ -1116,17 +1103,8 @@ const sx = {
     borderBottom: `1px solid ${colors.border}`,
     paddingBottom: 8,
   },
-  classTitle: {
-    margin: 0,
-    fontWeight: 600,
-    fontSize: ".95rem",
-  },
-  classSubtitle: {
-    margin: 0,
-    marginTop: 2,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
+  classTitle: { margin: 0, fontWeight: 600, fontSize: ".95rem" },
+  classSubtitle: { margin: 0, marginTop: 2, fontSize: ".8rem", color: "var(--ip-gray)" },
   classCodeBox: {
     minWidth: 44,
     minHeight: 34,
@@ -1152,24 +1130,9 @@ const sx = {
     fontWeight: 600,
   },
 
-  repSection: {
-    marginTop: 8,
-    paddingTop: 6,
-    borderTop: `1px solid ${colors.border}`,
-  },
-  repHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    fontSize: ".82rem",
-    fontWeight: 600,
-    marginBottom: 6,
-  },
-  repEmpty: {
-    margin: 0,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
+  repSection: { marginTop: 8, paddingTop: 6, borderTop: `1px solid ${colors.border}` },
+  repHeader: { display: "flex", alignItems: "center", gap: 6, fontSize: ".82rem", fontWeight: 600, marginBottom: 6 },
+  repEmpty: { margin: 0, fontSize: ".8rem", color: "var(--ip-gray)" },
   repRow: {
     display: "flex",
     alignItems: "center",
@@ -1179,57 +1142,15 @@ const sx = {
     gap: 8,
   },
   repName: { margin: 0, fontSize: ".85rem", fontWeight: 600 },
-  repMatricule: {
-    margin: 0,
-    marginTop: 2,
-    fontSize: ".75rem",
-    color: "var(--ip-gray)",
-  },
-  repRoles: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    maxWidth: 260,
-  },
+  repMatricule: { margin: 0, marginTop: 2, fontSize: ".75rem", color: "var(--ip-gray)" },
+  repRoles: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 260 },
   repPhone: { fontSize: ".78rem", color: "var(--ip-gray)" },
 
   studentsSection: { marginTop: 10 },
-  studentsTitle: {
-    margin: 0,
-    fontSize: ".82rem",
-    fontWeight: 600,
-    marginBottom: 4,
-  },
-  stRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "4px 0",
-    borderBottom: `1px solid #f1f2f5`,
-    gap: 8,
-  },
-  stName: {
-    margin: 0,
-    fontSize: ".85rem",
-    fontWeight: 500,
-    display: "flex",
-    alignItems: "center",
-  },
-  stMatricule: {
-    margin: 0,
-    marginTop: 2,
-    fontSize: ".75rem",
-    color: "var(--ip-gray)",
-  },
-  stRight: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    maxWidth: 260,
-  },
+  studentsTitle: { margin: 0, fontSize: ".82rem", fontWeight: 600, marginBottom: 4 },
+  stRow: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 0", borderBottom: `1px solid #f1f2f5`, gap: 8 },
+  stName: { margin: 0, fontSize: ".85rem", fontWeight: 500, display: "flex", alignItems: "center" },
+  stMatricule: { margin: 0, marginTop: 2, fontSize: ".75rem", color: "var(--ip-gray)" },
+  stRight: { display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: 260 },
   stPhone: { fontSize: ".78rem", color: "var(--ip-gray)" },
 };
