@@ -1,7 +1,7 @@
 // src/components/documents/NotesHeader.jsx
 // Entête IPMBTPE (comme sur le certificat de scolarité)
 
-const logoSrc = "/assets/ipmbtpe-header.png"; // adapte le chemin si besoin
+const logoSrc = "public/assets/ipmbtpe-header.png"; // adapte le chemin si besoin
 
 export default function NotesHeader() {
   return (

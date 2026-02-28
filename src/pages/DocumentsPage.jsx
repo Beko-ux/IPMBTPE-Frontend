@@ -18,15 +18,12 @@ import ClassDechargeBlankSheet from "../components/documents/ClassDechargeBlankS
 import ClassNotesMatrixSheet from "../components/documents/ClassNotesMatrixSheet.jsx";
 import ClassAbsencesReportSheet from "../components/documents/ClassAbsencesReportSheet.jsx";
 
-// ✅ NOUVEAU : CC / SN / NF + Décision (classe)
-import ClassNotesCCSNFinalSheet from "../components/documents/ClassNotesCCSNFinalSheet.jsx";
+// ✅ NOUVEAU : Procès Verbal Personnalisé (classe)
+import ProcesVerbalPersonnalSheet from "../components/documents/ProcesVerbalPersonnalSheet.jsx";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-export default function DocumentsPage({
-  currentSection = "documents",
-  onNavigate,
-}) {
+export default function DocumentsPage({ currentSection = "documents", onNavigate }) {
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -48,8 +45,8 @@ export default function DocumentsPage({
   // absences (classe)
   const [showAbsencesModal, setShowAbsencesModal] = useState(false);
 
-  // ✅ NOUVEAU : CC / SN / NF + Décision (classe)
-  const [showCCSNFinalModal, setShowCCSNFinalModal] = useState(false);
+  // ✅ NOUVEAU : Procès Verbal Personnalisé (classe)
+  const [showProcesVerbalPersonnalModal, setShowProcesVerbalPersonnalModal] = useState(false);
 
   // liste complète (chargée seulement quand on clique “Ajouter sa classe”)
   const [allStudents, setAllStudents] = useState([]);
@@ -65,9 +62,7 @@ export default function DocumentsPage({
     }
     setLoading(true);
     try {
-      const res = await fetch(
-        `${API_BASE}/students?q=${encodeURIComponent(q)}`
-      );
+      const res = await fetch(`${API_BASE}/students?q=${encodeURIComponent(q)}`);
       const data = await res.json();
       const arr = Array.isArray(data) ? data : [];
       setSearchResults(arr);
@@ -168,9 +163,7 @@ export default function DocumentsPage({
     const id = targetStudent.id;
 
     if (type === "badge") {
-      if (badgeSelection.length === 0) {
-        setBadgeSelection([targetStudent]);
-      }
+      if (badgeSelection.length === 0) setBadgeSelection([targetStudent]);
       setShowBadgeModal(true);
       return;
     }
@@ -195,22 +188,15 @@ export default function DocumentsPage({
     badgeSelection.length > 0
       ? `${badgeSelection.length} étudiant(s) sélectionné(s)`
       : selectedStudent
-      ? `${getFullName(selectedStudent)} · ${
-          selectedStudent.matricule || "Sans matricule"
-        }`
+      ? `${getFullName(selectedStudent)} · ${selectedStudent.matricule || "Sans matricule"}`
       : "Aucun étudiant sélectionné";
 
   return (
     <div style={styles.layout}>
-      {/* Colonne gauche */}
       <aside style={styles.left}>
-        <VerticalNavBar
-          currentSection={currentSection}
-          onNavigate={onNavigate}
-        />
+        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
       </aside>
 
-      {/* Colonne droite */}
       <main style={styles.right}>
         <HorizontalNavBar />
 
@@ -218,9 +204,7 @@ export default function DocumentsPage({
           <div style={styles.container}>
             <header style={{ marginBottom: "1.25rem" }}>
               <h1 style={styles.title}>Génération de documents</h1>
-              <p style={styles.subtitle}>
-                Certificats, relevés, cartes et fiches.
-              </p>
+              <p style={styles.subtitle}>Certificats, relevés, cartes et fiches.</p>
             </header>
 
             {/* Recherche étudiant */}
@@ -233,8 +217,7 @@ export default function DocumentsPage({
               <p style={styles.cardHint}>
                 Entrez le nom, les prénoms ou le matricule.
                 <br />
-                Pour les badges, vous pouvez sélectionner autant d&apos;étudiants
-                que nécessaire.
+                Pour les badges, vous pouvez sélectionner autant d&apos;étudiants que nécessaire.
               </p>
 
               <div style={styles.searchRow}>
@@ -263,7 +246,6 @@ export default function DocumentsPage({
                   {loading ? "Recherche..." : "Rechercher"}
                 </button>
 
-                {/* Ajouter la classe */}
                 <button
                   type="button"
                   onClick={addSelectedStudentClass}
@@ -298,19 +280,10 @@ export default function DocumentsPage({
                           }}
                           onClick={() => setSelectedStudent(s)}
                         >
-                          <div style={{ fontWeight: 600, fontSize: ".9rem" }}>
-                            {getFullName(s)}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: ".8rem",
-                              color: "var(--ip-gray)",
-                            }}
-                          >
+                          <div style={{ fontWeight: 600, fontSize: ".9rem" }}>{getFullName(s)}</div>
+                          <div style={{ fontSize: ".8rem", color: "var(--ip-gray)" }}>
                             {s.matricule || "Sans matricule"} · {s.filiere || ""}{" "}
-                            {s.optionCode || s.specialiteCode
-                              ? ` · ${s.optionCode || s.specialiteCode}`
-                              : ""}
+                            {s.optionCode || s.specialiteCode ? ` · ${s.optionCode || s.specialiteCode}` : ""}
                             {s.cycle ? ` · ${s.cycle}` : ""}
                             {s.studyYear ? ` ${s.studyYear}` : ""}
                           </div>
@@ -365,9 +338,7 @@ export default function DocumentsPage({
                   icon={<ImageIcon size={20} color="#F59E0B" />}
                   title="Carte d’étudiant"
                   description={
-                    isStudentSelected
-                      ? "Carte format ID-1 (85,6×54mm) avec photo."
-                      : "Sélectionnez un étudiant."
+                    isStudentSelected ? "Carte format ID-1 (85,6×54mm) avec photo." : "Sélectionnez un étudiant."
                   }
                   disabled={!isStudentSelected}
                   onClick={() => openDocument("card")}
@@ -380,9 +351,7 @@ export default function DocumentsPage({
                   description={
                     badgeSelection.length > 0
                       ? `${badgeSelection.length} étudiant(s) sélectionné(s). ${
-                          badgeSelection.length <= 4
-                            ? "1 page A4"
-                            : `${Math.ceil(badgeSelection.length / 4)} pages A4`
+                          badgeSelection.length <= 4 ? "1 page A4" : `${Math.ceil(badgeSelection.length / 4)} pages A4`
                         }`
                       : isStudentSelected
                       ? "Utilisez la liste au-dessus pour ajouter des étudiants."
@@ -393,7 +362,6 @@ export default function DocumentsPage({
                   accent="orange"
                 />
 
-                {/* FICHE DE REPORT DE NOTES */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
                   title="Fiche de report de notes (classe)"
@@ -403,17 +371,16 @@ export default function DocumentsPage({
                   accent="teal"
                 />
 
-                {/* FICHE CC / SN / NF + DEC */}
+                {/* ✅ NOUVEAU : PV Personnalisé */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
-                  title="Fiche CC / SN / NF + Décision (classe)"
-                  description="Affiche CC, SN, NF=30%CC+70%SN et Décision (V/NV). Impression PDF."
+                  title="Procès Verbal personnalisé (classe)"
+                  description="Procès verbal configurable. Impression PDF."
                   disabled={false}
-                  onClick={() => setShowCCSNFinalModal(true)}
+                  onClick={() => setShowProcesVerbalPersonnalModal(true)}
                   accent="teal"
                 />
 
-                {/* FICHE DE DÉCHARGE */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
                   title="Fiche de décharge (classe)"
@@ -423,7 +390,6 @@ export default function DocumentsPage({
                   accent="teal"
                 />
 
-                {/* LISTE DES NOTES */}
                 <DocumentTile
                   icon={<FileText size={20} color="#2563EB" />}
                   title="Liste des notes (classe) — A4 paysage"
@@ -433,7 +399,6 @@ export default function DocumentsPage({
                   accent="teal"
                 />
 
-                {/* RAPPORT ABSENCES */}
                 <DocumentTile
                   icon={<FileText size={20} color="#DC2626" />}
                   title="Rapport d’absences (classe)"
@@ -446,9 +411,8 @@ export default function DocumentsPage({
 
               {!isStudentSelected && (
                 <p style={styles.infoText}>
-                  Pour les documents individuels (certificat, carte, badge),
-                  sélectionnez d&apos;abord un étudiant. Les fiches “classe”
-                  fonctionnent par classe.
+                  Pour les documents individuels (certificat, carte, badge), sélectionnez d&apos;abord un étudiant.
+                  Les fiches “classe” fonctionnent par classe.
                 </p>
               )}
             </section>
@@ -463,32 +427,23 @@ export default function DocumentsPage({
         />
       )}
 
-      {showNotesSheetModal && (
-        <ClassNotesBlankSheet onClose={() => setShowNotesSheetModal(false)} />
-      )}
+      {showNotesSheetModal && <ClassNotesBlankSheet onClose={() => setShowNotesSheetModal(false)} />}
 
       {showDechargeSheetModal && (
-        <ClassDechargeBlankSheet
-          onClose={() => setShowDechargeSheetModal(false)}
-        />
+        <ClassDechargeBlankSheet onClose={() => setShowDechargeSheetModal(false)} />
       )}
 
       {showNotesMatrixModal && (
-        <ClassNotesMatrixSheet
-          onClose={() => setShowNotesMatrixModal(false)}
-        />
+        <ClassNotesMatrixSheet onClose={() => setShowNotesMatrixModal(false)} />
       )}
 
       {showAbsencesModal && (
-        <ClassAbsencesReportSheet
-          onClose={() => setShowAbsencesModal(false)}
-        />
+        <ClassAbsencesReportSheet onClose={() => setShowAbsencesModal(false)} />
       )}
 
-      {showCCSNFinalModal && (
-        <ClassNotesCCSNFinalSheet
-          onClose={() => setShowCCSNFinalModal(false)}
-        />
+      {/* ✅ PV Personnalisé */}
+      {showProcesVerbalPersonnalModal && (
+        <ProcesVerbalPersonnalSheet onClose={() => setShowProcesVerbalPersonnalModal(false)} />
       )}
     </div>
   );
@@ -565,12 +520,7 @@ const styles = {
     gap: "1.5rem",
   },
   title: { margin: 0, fontSize: "1.4rem", fontWeight: 700 },
-  subtitle: {
-    margin: 0,
-    marginTop: 4,
-    fontSize: ".9rem",
-    color: "var(--ip-gray)",
-  },
+  subtitle: { margin: 0, marginTop: 4, fontSize: ".9rem", color: "var(--ip-gray)" },
   card: {
     background: "#ffffff",
     borderRadius: 12,
@@ -586,12 +536,7 @@ const styles = {
     marginBottom: 6,
   },
   cardTitle: { margin: 0, fontSize: "1rem", fontWeight: 600 },
-  cardHint: {
-    margin: 0,
-    marginBottom: 8,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
+  cardHint: { margin: 0, marginBottom: 8, fontSize: ".8rem", color: "var(--ip-gray)" },
   selectedChip: {
     fontSize: ".75rem",
     borderRadius: 999,
@@ -600,12 +545,7 @@ const styles = {
     color: "#555",
     whiteSpace: "nowrap",
   },
-  searchRow: {
-    display: "flex",
-    gap: "0.5rem",
-    alignItems: "center",
-    marginTop: 4,
-  },
+  searchRow: { display: "flex", gap: "0.5rem", alignItems: "center", marginTop: 4 },
   searchInputWrap: { position: "relative", flex: 1 },
   searchIcon: {
     position: "absolute",
@@ -651,12 +591,7 @@ const styles = {
     gap: 6,
     whiteSpace: "nowrap",
   },
-  resultsList: {
-    marginTop: 10,
-    borderRadius: 10,
-    overflow: "hidden",
-    border: "1px solid var(--border)",
-  },
+  resultsList: { marginTop: 10, borderRadius: 10, overflow: "hidden", border: "1px solid var(--border)" },
   resultRow: {
     display: "flex",
     alignItems: "center",
@@ -675,12 +610,7 @@ const styles = {
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
-  docGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: "0.75rem",
-    marginTop: 8,
-  },
+  docGrid: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: "0.75rem", marginTop: 8 },
   docTile: {
     display: "flex",
     alignItems: "flex-start",
@@ -701,11 +631,6 @@ const styles = {
     justifyContent: "center",
   },
   docTitle: { margin: 0, fontSize: ".9rem", fontWeight: 600 },
-  docDesc: {
-    margin: 0,
-    marginTop: 2,
-    fontSize: ".78rem",
-    color: "var(--ip-gray)",
-  },
+  docDesc: { margin: 0, marginTop: 2, fontSize: ".78rem", color: "var(--ip-gray)" },
   infoText: { marginTop: 12, fontSize: ".8rem", color: "var(--ip-gray)" },
 };
