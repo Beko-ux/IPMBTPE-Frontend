@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Printer, Lock, BarChart2, Download, Shield } from "lucide-react";
+import { Printer, Lock, BarChart2, Download, Shield, User } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -319,22 +319,13 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
         setExamCtx(ctx);
 
-        if (!ctx?.exists) {
-          // pas de session/évaluation
-          setAnonList([]);
-          return;
-        }
-
-        if (!ctx?.hasAnonymous) {
-          // session existe mais aucun item anonyme
-          setAnonList([]);
-          return;
-        }
+        if (!ctx?.exists) { setAnonList([]); return; }
+        if (!ctx?.hasAnonymous) { setAnonList([]); return; }
 
         // 2) list anonymats
         const qs2 = new URLSearchParams();
         qs2.set("examId", ctx.examId);
-        qs2.set("includeStudents", "0"); // privacy: pas de noms
+        qs2.set("includeStudents", "0"); // privacy
 
         const res2 = await fetch(`${API_BASE}/evaluation-session-anonymats?${qs2.toString()}`);
         const data2 = await res2.json();
@@ -365,8 +356,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
       if (!selectedClass || !selectedSubject) return;
       if (!resolvedSubjectCode) return;
-
-      // si anonyme, il faut examCtx.examId
       if (isAnonymousSubject && !examCtx?.examId) return;
 
       setLoading(true);
@@ -385,7 +374,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
         const res = await fetch(`${API_BASE}/notes/sheet?${qs.toString()}`);
         const data = await res.json();
-
         if (!res.ok) throw new Error(data?.error || "Bad Request");
 
         const sheet = data?.sheet || null;
@@ -398,7 +386,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
         const filled = {};
 
         if (isAnonymousSubject) {
-          // keys = anonCode
           (anonList || []).forEach((a) => {
             const k = cleanStr(a.anonCode);
             if (!k) return;
@@ -409,7 +396,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
             if (strVal !== "") filled[k] = true;
           });
 
-          // entrées orphelines
           Object.keys(entries).forEach((k) => {
             if (map[k] !== undefined) return;
             const e = entries[k];
@@ -419,7 +405,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
             if (strVal !== "") filled[k] = true;
           });
         } else {
-          // nominatif: keys = studentKey
           (sortedStudents || []).forEach((s) => {
             const k = keyForStudent(s);
             if (!k) return;
@@ -479,7 +464,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       return alert("Cette feuille est verrouillée (session principale). Utilisez un rattrapage.");
     }
 
-    // ✅ payload selon mode
     let payloadNotes = [];
 
     if (isAnonymousSubject) {
@@ -505,12 +489,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
           if (raw === "" || raw == null) return null;
           const value = Number(String(raw).replace(",", "."));
           if (Number.isNaN(value)) return null;
-          return {
-            studentId: s.id || null,
-            matricule: s.matricule || null,
-            fullName: s.fullName || "",
-            value,
-          };
+          return { studentId: s.id || null, matricule: s.matricule || null, fullName: s.fullName || "", value };
         })
         .filter(Boolean);
     }
@@ -532,7 +511,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       notes: payloadNotes,
     };
 
-    // ✅ examId en mode anonyme
     if (isAnonymousSubject) body.examId = examCtx.examId;
 
     try {
@@ -594,9 +572,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const handleLock = async () => {
     if (!selectedClass || !selectedSubject) return alert("Choisissez d’abord la classe et la matière.");
     if (!resolvedSubjectCode) return alert("ECUE code introuvable (subjectCode).");
-    if (sessionType !== "main") {
-      return alert("Le verrouillage s’applique à la session principale (pas au rattrapage).");
-    }
+    if (sessionType !== "main") return alert("Le verrouillage s’applique à la session principale (pas au rattrapage).");
     if (!window.confirm("Valider / verrouiller ces notes ? (elles ne seront plus modifiables)")) return;
 
     const body = {
@@ -660,6 +636,9 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     selectedSubject &&
     (!examCtx?.exists || !examCtx?.hasAnonymous || !anonList.length);
 
+  // ✅ NEW: libellé compact session
+  const sessionLabel = sessionType === "rattrapage" ? "RATTRAPAGE" : "PRINCIPALE";
+
   return (
     <div style={styles.layout}>
       <aside style={styles.left}>
@@ -673,15 +652,14 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
           <div style={styles.container}>
             <section style={headerStyles.card}>
               <div style={headerStyles.left}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <h1 style={headerStyles.title}>Gestion des notes</h1>
 
-                  {isAnonymousSubject && (
-                    <span style={pillAnon}>
-                      <Shield size={14} />
-                      Mode ANONYME
-                    </span>
-                  )}
+                  {/* ✅ Badge mode (toujours) */}
+                  <span style={isAnonymousSubject ? pillAnon : pillNom}>
+                    {isAnonymousSubject ? <Shield size={14} /> : <User size={14} />}
+                    {isAnonymousSubject ? "ANONYME" : "NOMINATIF"}
+                  </span>
                 </div>
 
                 <p style={headerStyles.subtitle}>
@@ -694,31 +672,28 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
                 <p style={headerStyles.classInfo}>{classLabel}</p>
 
-                <p style={headerStyles.subjectInfo}>
-                  <strong>Matière :</strong> {selectedSubject ? getSubjectLabel(selectedSubject) : "—"}
-                  {" · "}
-                  <strong>Code ECUE :</strong> {selectedSubject ? (resolvedSubjectCode || "—") : "—"}
-                  {" · "}
-                  <strong>Semestre :</strong> {semester}
-                  {" · "}
-                  <strong>Examen :</strong> {examTypeLabel(examType)}
-                  {" · "}
-                  <strong>Session :</strong> {sessionType === "rattrapage" ? "Rattrapage" : "Principale"}
-                  {" · "}
-                  <strong>Verrouillé :</strong> {locked ? "Oui" : "Non"}
-                  {loadingCatalog && (
-                    <>
-                      {" · "}
-                      <span style={{ color: "#6B7280" }}>Catalogue ECUE…</span>
-                    </>
-                  )}
-                </p>
+                {/* ✅ REMPLACE la ligne "Matière : ... · Code ECUE : ... · ..." par des chips */}
+                <div style={headerStyles.metaRow}>
+                  <MetaChip title={getSubjectLabel(selectedSubject) || "—"} tone="primary" />
+                  <MetaChip title={resolvedSubjectCode || "—"} tone="code" />
+                  <MetaChip title={semester || "—"} />
+                  <MetaChip title={examTypeLabel(examType)} />
+                  <MetaChip title={sessionLabel} />
+                  <MetaChip title={locked ? "VERROUILLÉ" : "DÉVERROUILLÉ"} tone={locked ? "danger" : "ok"} />
+                  {loadingCatalog && <MetaChip title="Catalogue ECUE…" tone="muted" />}
+                </div>
 
                 {isAnonymousSubject && (
                   <div style={anonInfoBox}>
-                    <div><b>ExamId :</b> {examCtx?.examId || "—"}</div>
-                    <div><b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}</div>
-                    <div><b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}</div>
+                    <div>
+                      <b>ExamId :</b> {examCtx?.examId || "—"}
+                    </div>
+                    <div>
+                      <b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}
+                    </div>
+                    <div>
+                      <b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}
+                    </div>
                   </div>
                 )}
               </div>
@@ -747,9 +722,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                         setSelectedSubjectId("");
                       }}
                     >
-                      <option value="">
-                        {loadingClasses ? "Chargement..." : "-- Sélectionner --"}
-                      </option>
+                      <option value="">{loadingClasses ? "Chargement..." : "-- Sélectionner --"}</option>
                       {classes.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.title || c.abbrev || c.displayName || c.id}
@@ -822,7 +795,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
                       {subjects.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {getSubjectLabel(s)}{s.isAnonymous ? " (ANONYME)" : ""}
+                          {getSubjectLabel(s)}
+                          {s.isAnonymous ? " (ANONYME)" : ""}
                         </option>
                       ))}
                     </select>
@@ -874,8 +848,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     {isAnonymousSubject ? " (ANONYME)" : ""}
                   </h2>
                   <p style={entryStyles.subtitle}>
-                    {semester} · {examTypeLabel(examType)} ·{" "}
-                    {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
+                    {semester} · {examTypeLabel(examType)} · {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
                   </p>
 
                   {!selectedClassId && <p style={entryStyles.warn}>Choisissez d’abord une classe.</p>}
@@ -907,11 +880,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                 ) : !selectedSubjectId ? (
                   <p style={entryStyles.emptyState}>Choisissez la matière (ECUE).</p>
                 ) : isAnonymousSubject ? (
-                  // ✅ TABLE ANONYME
                   anonList.length === 0 ? (
-                    <p style={entryStyles.emptyState}>
-                      {loadingAnon ? "Chargement des anonymats…" : "Aucun anonymat disponible."}
-                    </p>
+                    <p style={entryStyles.emptyState}>{loadingAnon ? "Chargement des anonymats…" : "Aucun anonymat disponible."}</p>
                   ) : (
                     <table style={entryStyles.table}>
                       <thead>
@@ -973,7 +943,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     </table>
                   )
                 ) : (
-                  // ✅ TABLE NOMINATIVE (inchangée)
                   sortedStudents.length === 0 ? (
                     <p style={entryStyles.emptyState}>Aucun étudiant dans cette classe.</p>
                   ) : (
@@ -1077,6 +1046,20 @@ function Field({ label, children }) {
   );
 }
 
+// ✅ petite “pill” compacte
+function MetaChip({ title, tone = "default" }) {
+  const base = chipBase;
+  const skin =
+    tone === "primary" ? chipPrimary :
+    tone === "code" ? chipCode :
+    tone === "ok" ? chipOk :
+    tone === "danger" ? chipDanger :
+    tone === "muted" ? chipMuted :
+    chipDefault;
+
+  return <span style={{ ...base, ...skin }}>{title}</span>;
+}
+
 const inputPill = {
   height: 38,
   borderRadius: 999,
@@ -1091,378 +1074,92 @@ const inputPill = {
 };
 
 // ✅ CASE active (input)
-const stylesActiveInput = {
-  background: "#F0FDFA",
-  border: "1px solid #22C55E",
-  boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18)",
-};
-
+const stylesActiveInput = { background: "#F0FDFA", border: "1px solid #22C55E", boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18)" };
 // ✅ LIGNE active
 const stylesActiveRow = { background: "#F0FDFA" };
-
 // ✅ CELLULES actives
-const stylesActiveCell = {
-  borderTop: "1px solid #22C55E",
-  borderBottom: "1px solid #22C55E",
-};
-
+const stylesActiveCell = { borderTop: "1px solid #22C55E", borderBottom: "1px solid #22C55E" };
 // ✅ prérempli
-const stylesPrefilledInput = {
-  background: "#EFF6FF",
-  border: "1px solid #3B82F6",
-  boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.14)",
-};
-
+const stylesPrefilledInput = { background: "#EFF6FF", border: "1px solid #3B82F6", boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.14)" };
 // ✅ disabled
-const stylesDisabledInput = {
-  opacity: 0.5,
-  cursor: "not-allowed",
-};
+const stylesDisabledInput = { opacity: 0.5, cursor: "not-allowed" };
 
 /* ========================= Styles ========================= */
 
 const styles = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: "1px solid var(--border)",
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
+  layout: { display: "grid", gridTemplateColumns: "minmax(220px, 10%) 1fr", width: "100vw", height: "100vh", background: "#f5f6f8", overflow: "hidden" },
+  left: { height: "100%", overflowY: "auto", background: "var(--bg)", borderRight: "1px solid var(--border)" },
+  right: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflow: "hidden", background: "#f5f6f8" },
   pageBody: { flex: 1, overflowY: "auto" },
-  container: {
-    maxWidth: "1600px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 1.5rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.5rem",
-  },
+  container: { maxWidth: "1600px", margin: "1.5rem auto", padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
 };
 
 const headerStyles = {
-  card: {
-    background: "var(--bg)",
-    borderRadius: 16,
-    border: "1px solid var(--border)",
-    padding: "1rem 1.25rem",
-    display: "flex",
-    gap: "1rem",
-    alignItems: "flex-start",
-    boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)",
-  },
+  card: { background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", padding: "1rem 1.25rem", display: "flex", gap: "1rem", alignItems: "flex-start", boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)" },
   left: { flex: 1, minWidth: 0 },
-  right: {
-    flex: 1.3,
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.75rem",
-    alignItems: "flex-end",
-  },
+  right: { flex: 1.3, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-end" },
   title: { margin: 0, fontSize: "1.05rem", fontWeight: 800 },
   subtitle: { margin: "4px 0 0", fontSize: ".85rem", color: "var(--ip-gray)" },
-  badge: {
-    marginTop: 8,
-    display: "inline-block",
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: ".75rem",
-    background: "#ECFEFF",
-    color: "#0369A1",
-    border: "1px solid #7DD3FC",
-    width: "fit-content",
-  },
+  badge: { marginTop: 8, display: "inline-block", padding: "4px 10px", borderRadius: 999, fontSize: ".75rem", background: "#ECFEFF", color: "#0369A1", border: "1px solid #7DD3FC", width: "fit-content" },
   classInfo: { marginTop: 6, fontSize: ".8rem", color: "#4B5563" },
-  subjectInfo: { marginTop: 2, fontSize: ".8rem", color: "#111827" },
-  filtersRow: {
-    display: "flex",
-    gap: ".5rem",
-    flexWrap: "wrap",
-    width: "100%",
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 4,
-    minWidth: 0,
-    flex: 1,
-  },
+
+  // ✅ NEW: zone chips
+  metaRow: { marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
+
+  filtersRow: { display: "flex", gap: ".5rem", flexWrap: "wrap", width: "100%" },
+  field: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 },
   label: { fontSize: ".75rem", fontWeight: 700, color: "var(--ip-gray)" },
-  topButtons: {
-    display: "flex",
-    flexDirection: "column",
-    gap: ".5rem",
-    alignItems: "flex-end",
-    width: "100%",
-  },
-  configBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "none",
-    background: "#00b89c",
-    color: "white",
-    fontSize: ".85rem",
-    fontWeight: 700,
-    cursor: "default",
-    opacity: 0.7,
-  },
+  topButtons: { display: "flex", flexDirection: "column", gap: ".5rem", alignItems: "flex-end", width: "100%" },
+  configBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "white", fontSize: ".85rem", fontWeight: 700, cursor: "default", opacity: 0.7 },
   actionsRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  smallBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "7px 12px",
-    borderRadius: 999,
-    border: "1px solid var(--border)",
-    background: "#fff",
-    color: "#374151",
-    fontSize: ".8rem",
-    cursor: "default",
-  },
-  lockBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "none",
-    background: "#00b89c",
-    color: "#fff",
-    fontSize: ".85rem",
-    fontWeight: 800,
-  },
+  smallBtn: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "#fff", color: "#374151", fontSize: ".8rem", cursor: "default" },
+  lockBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "#fff", fontSize: ".85rem", fontWeight: 800 },
 };
 
 const entryStyles = {
-  card: {
-    background: "#fff",
-    borderRadius: 16,
-    border: "1px solid var(--border)",
-    padding: "1rem 1.25rem 0.75rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "0.75rem",
-    boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)",
-  },
-  headerRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
+  card: { background: "#fff", borderRadius: 16, border: "1px solid var(--border)", padding: "1rem 1.25rem 0.75rem", display: "flex", flexDirection: "column", gap: "0.75rem", boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)" },
+  headerRow: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
   title: { margin: 0, fontSize: "1rem", fontWeight: 800 },
   subtitle: { margin: "4px 0 0", fontSize: ".8rem", color: "#6B7280" },
   warn: { margin: "8px 0 0", fontSize: ".8rem", color: "#B45309" },
-  tableWrapper: {
-    marginTop: 8,
-    borderRadius: 14,
-    border: "1px solid #E5E7EB",
-    overflow: "hidden",
-  },
+  tableWrapper: { marginTop: 8, borderRadius: 14, border: "1px solid #E5E7EB", overflow: "hidden" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: ".85rem" },
   tdBase: {},
-  thIndex: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "left",
-    width: 40,
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  thMatricule: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "left",
-    width: 190,
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  thName: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "left",
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  thNote: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "center",
-    width: 140,
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  thMention: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "center",
-    width: 140,
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  thStatus: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #E5E7EB",
-    textAlign: "center",
-    width: 140,
-    fontWeight: 800,
-    fontSize: ".8rem",
-    color: "#6B7280",
-    background: "#FAFAFB",
-  },
-  tdIndex: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    fontSize: ".82rem",
-    color: "#6B7280",
-  },
-  tdMatricule: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    fontSize: ".82rem",
-    color: "#111827",
-    whiteSpace: "nowrap",
-  },
-  tdName: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    fontSize: ".85rem",
-    color: "#111827",
-  },
-  tdNote: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    textAlign: "center",
-  },
-  tdMention: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    textAlign: "center",
-    fontSize: ".82rem",
-    color: "#4B5563",
-  },
-  tdStatus: {
-    padding: "10px 12px",
-    borderBottom: "1px solid #F3F4F6",
-    textAlign: "center",
-    fontSize: ".82rem",
-    color: "#4B5563",
-  },
-  noteInput: {
-    width: 90,
-    height: 34,
-    borderRadius: 10,
-    border: "1px solid #D1D5DB",
-    background: "#F9FAFB",
-    textAlign: "center",
-    fontSize: ".9rem",
-    outline: "none",
-  },
+  thIndex: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "left", width: 40, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  thMatricule: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "left", width: 190, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  thName: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "left", fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  thNote: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "center", width: 140, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  thMention: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "center", width: 140, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  thStatus: { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "center", width: 140, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" },
+  tdIndex: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", fontSize: ".82rem", color: "#6B7280" },
+  tdMatricule: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", fontSize: ".82rem", color: "#111827", whiteSpace: "nowrap" },
+  tdName: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", fontSize: ".85rem", color: "#111827" },
+  tdNote: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", textAlign: "center" },
+  tdMention: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", textAlign: "center", fontSize: ".82rem", color: "#4B5563" },
+  tdStatus: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6", textAlign: "center", fontSize: ".82rem", color: "#4B5563" },
+  noteInput: { width: 90, height: 34, borderRadius: 10, border: "1px solid #D1D5DB", background: "#F9FAFB", textAlign: "center", fontSize: ".9rem", outline: "none" },
   emptyState: { padding: "12px 14px", fontSize: ".85rem", color: "#6B7280" },
-  footerRow: {
-    padding: "0.85rem 0.25rem 0.75rem",
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 10,
-  },
-  btnGhost: {
-    borderRadius: 999,
-    border: "1px solid var(--border)",
-    background: "#fff",
-    color: "#111827",
-    padding: "0.55rem 1rem",
-    fontSize: ".88rem",
-    cursor: "pointer",
-    fontWeight: 700,
-  },
-  btnPrimary: {
-    borderRadius: 999,
-    border: "none",
-    background: "#00b89c",
-    color: "#fff",
-    padding: "0.55rem 1.2rem",
-    fontSize: ".88rem",
-    fontWeight: 900,
-    cursor: "pointer",
-  },
+  footerRow: { padding: "0.85rem 0.25rem 0.75rem", display: "flex", justifyContent: "flex-end", gap: 10 },
+  btnGhost: { borderRadius: 999, border: "1px solid var(--border)", background: "#fff", color: "#111827", padding: "0.55rem 1rem", fontSize: ".88rem", cursor: "pointer", fontWeight: 700 },
+  btnPrimary: { borderRadius: 999, border: "none", background: "#00b89c", color: "#fff", padding: "0.55rem 1.2rem", fontSize: ".88rem", fontWeight: 900, cursor: "pointer" },
 };
 
-// ✅ ANON UI bits
-const pillAnon = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "4px 10px",
-  borderRadius: 999,
-  background: "#ECFDF5",
-  border: "1px solid #A7F3D0",
-  color: "#047857",
-  fontSize: ".75rem",
-  fontWeight: 900,
-};
+// ✅ Badge “ANONYME”
+const pillAnon = { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#047857", fontSize: ".75rem", fontWeight: 900 };
+// ✅ Badge “NOMINATIF”
+const pillNom = { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8", fontSize: ".75rem", fontWeight: 900 };
 
-const anonInfoBox = {
-  marginTop: 10,
-  padding: 12,
-  borderRadius: 14,
-  border: "1px solid #E5E7EB",
-  background: "#F9FAFB",
-  fontSize: 13,
-  lineHeight: "20px",
-};
+const anonInfoBox = { marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid #E5E7EB", background: "#F9FAFB", fontSize: 13, lineHeight: "20px" };
 
-const thAnon = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #E5E7EB",
-  textAlign: "left",
-  width: 220,
-  fontWeight: 800,
-  fontSize: ".8rem",
-  color: "#6B7280",
-  background: "#FAFAFB",
-};
+const thAnon = { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAlign: "left", width: 220, fontWeight: 800, fontSize: ".8rem", color: "#6B7280", background: "#FAFAFB" };
+const tdAnon = { padding: "10px 12px", borderBottom: "1px solid #F3F4F6" };
+const anonBadge = { display: "inline-flex", alignItems: "center", padding: "4px 10px", borderRadius: 999, border: "1px solid #3B82F6", background: "#EFF6FF", color: "#1D4ED8", fontWeight: 900, fontSize: ".8rem" };
 
-const tdAnon = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #F3F4F6",
-};
-
-const anonBadge = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 10px",
-  borderRadius: 999,
-  border: "1px solid #3B82F6",
-  background: "#EFF6FF",
-  color: "#1D4ED8",
-  fontWeight: 900,
-  fontSize: ".8rem",
-};
+/* ✅ chips (nouvelle entête) */
+const chipBase = { display: "inline-flex", alignItems: "center", height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #E5E7EB", background: "#fff", fontSize: ".78rem", fontWeight: 800, color: "#111827", whiteSpace: "nowrap" };
+const chipDefault = { background: "#fff", color: "#111827", border: "1px solid #E5E7EB" };
+const chipPrimary = { background: "#F9FAFB", color: "#111827", border: "1px solid #E5E7EB" };
+const chipCode = { background: "#ECFEFF", color: "#0369A1", border: "1px solid #7DD3FC" };
+const chipOk = { background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" };
+const chipDanger = { background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA" };
+const chipMuted = { background: "#F3F4F6", color: "#6B7280", border: "1px solid #E5E7EB" };

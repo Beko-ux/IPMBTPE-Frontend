@@ -29,6 +29,23 @@ function examTypeLabel(code) {
   return v || "—";
 }
 
+/** ✅ robust label/code (cohérent avec /evaluations/subjects qui peut renvoyer semesterMode etc.) */
+function subjectLabel(s) {
+  const sm = cleanStr(s?.semesterMode || s?.semester || "");
+  const base = cleanStr(s?.baseLabel);
+
+  const direct = cleanStr(s?.label) || cleanStr(s?.subjectLabel) || cleanStr(s?.name) || base;
+  if (direct) return direct;
+
+  const l1 = cleanStr(s?.labelS1);
+  const l2 = cleanStr(s?.labelS2);
+  if (sm === "S2") return l2 || l1 || "—";
+  return l1 || l2 || "—";
+}
+function subjectCode(s) {
+  return cleanStr(s?.code) || cleanStr(s?.subjectCode) || cleanStr(s?.id) || "—";
+}
+
 export default function AnonymatsPage({ currentSection = "anonymats", onNavigate }) {
   // Contexte
   const [academicYear, setAcademicYear] = useState("2025-2026");
@@ -105,6 +122,16 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
       /* Optionnel: réduire les arrondis et bordures en impression */
       .print-card { border: none !important; border-radius: 0 !important; }
       .print-table th { background: #f3f4f6 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+      /* ✅ Ne pas imprimer la colonne Modifier */
+      .print-table th:nth-child(4),
+      .print-table td:nth-child(4) { display: none !important; }
+
+      /* ✅ Si on est en mode sans étudiants, on masque aussi Etudiant + Matricule */
+      .hide-students th:nth-child(2),
+      .hide-students td:nth-child(2),
+      .hide-students th:nth-child(3),
+      .hide-students td:nth-child(3) { display: none !important; }
     }
   `;
 
@@ -178,7 +205,7 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
 
         const data = await api.get(`/evaluations/subjects?${qs.toString()}`);
         const list = Array.isArray(data?.subjects) ? data.subjects : [];
-        list.sort((a, b) => String(a.label || "").localeCompare(String(b.label || "")));
+        list.sort((a, b) => String(subjectLabel(a)).localeCompare(String(subjectLabel(b))));
         setSubjects(list);
       }
 
@@ -423,8 +450,8 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                       <tbody>
                         {subjects.map((s) => (
                           <tr key={s.subjectId || s.id}>
-                            <td style={table.td}>{s.label || "—"}</td>
-                            <td style={table.td}>{s.code || "—"}</td>
+                            <td style={table.td}>{subjectLabel(s)}</td>
+                            <td style={table.td}>{subjectCode(s)}</td>
                             <td style={table.td}>
                               {s.isAnonymous ? <span style={badges.anon}>ANONYME</span> : <span style={badges.nom}>NOMINATIF</span>}
                             </td>
@@ -435,9 +462,7 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                   )}
                 </div>
 
-                <div style={note.tip}>
-                  ✅ Après “Charger”, tu peux générer, modifier, enregistrer et imprimer la correspondance.
-                </div>
+                <div style={note.tip}>✅ Après “Charger”, tu peux générer, modifier, enregistrer et imprimer la correspondance.</div>
               </section>
 
               {/* RIGHT */}
@@ -450,10 +475,18 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                 </div>
 
                 <div style={infoBox}>
-                  <div><b>Contexte (examId) :</b> {examCtx?.examId || "—"}</div>
-                  <div><b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}</div>
-                  <div><b>Anonymat actif :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}</div>
-                  <div><b>Verrouillé :</b> {isLocked ? "Oui" : "Non"}</div>
+                  <div>
+                    <b>Contexte (examId) :</b> {examCtx?.examId || "—"}
+                  </div>
+                  <div>
+                    <b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}
+                  </div>
+                  <div>
+                    <b>Anonymat actif :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}
+                  </div>
+                  <div>
+                    <b>Verrouillé :</b> {isLocked ? "Oui" : "Non"}
+                  </div>
                 </div>
 
                 <div style={form.row}>
@@ -478,18 +511,36 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                 <div style={form.row}>
                   <div style={form.field}>
                     <label style={form.label}>Préfixe</label>
-                    <input style={form.input} value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="AT" disabled={isLocked} />
+                    <input
+                      style={form.input}
+                      value={prefix}
+                      onChange={(e) => setPrefix(e.target.value)}
+                      placeholder="AT"
+                      disabled={isLocked}
+                    />
                     <div style={form.hint}>Ex: AT → AT101..AT120</div>
                   </div>
 
                   <div style={form.field}>
                     <label style={form.label}>StartAt</label>
-                    <input style={form.input} value={String(startAt)} onChange={(e) => setStartAt(e.target.value)} placeholder="101" disabled={isLocked} />
+                    <input
+                      style={form.input}
+                      value={String(startAt)}
+                      onChange={(e) => setStartAt(e.target.value)}
+                      placeholder="101"
+                      disabled={isLocked}
+                    />
                   </div>
 
                   <div style={form.field}>
                     <label style={form.label}>Width</label>
-                    <input style={form.input} value={String(width)} onChange={(e) => setWidth(e.target.value)} placeholder="3" disabled={isLocked} />
+                    <input
+                      style={form.input}
+                      value={String(width)}
+                      onChange={(e) => setWidth(e.target.value)}
+                      placeholder="3"
+                      disabled={isLocked}
+                    />
                   </div>
                 </div>
 
@@ -510,19 +561,35 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                 </div>
 
                 <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-                  <button style={btn.ghost} onClick={() => examCtx?.examId && loadAnonymats(examCtx.examId)} disabled={!examCtx?.examId || loading}>
+                  <button
+                    style={btn.ghost}
+                    onClick={() => examCtx?.examId && loadAnonymats(examCtx.examId)}
+                    disabled={!examCtx?.examId || loading}
+                  >
                     Recharger
                   </button>
 
-                  <button style={btn.primary} onClick={generate} disabled={!examCtx?.examId || loading || !examCtx?.hasAnonymous || isLocked}>
+                  <button
+                    style={btn.primary}
+                    onClick={generate}
+                    disabled={!examCtx?.examId || loading || !examCtx?.hasAnonymous || isLocked}
+                  >
                     Générer anonymats
                   </button>
 
-                  <button style={btn.ghost} onClick={saveManualAll} disabled={!examCtx?.examId || loading || !anonymats.length || isLocked}>
+                  <button
+                    style={btn.ghost}
+                    onClick={saveManualAll}
+                    disabled={!examCtx?.examId || loading || !anonymats.length || isLocked}
+                  >
                     Enregistrer
                   </button>
 
-                  <button style={btn.danger} onClick={lockNow} disabled={!examCtx?.examId || loading || !anonymats.length || isLocked}>
+                  <button
+                    style={btn.danger}
+                    onClick={lockNow}
+                    disabled={!examCtx?.examId || loading || !anonymats.length || isLocked}
+                  >
                     Verrouiller
                   </button>
                 </div>
@@ -545,10 +612,18 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                     <div style={print.title}>ANONYMAT</div>
 
                     <div style={print.metaGrid}>
-                      <div><b>Année académique :</b> {printMeta.academicYear}</div>
-                      <div><b>Classe :</b> {printMeta.classLabel}</div>
-                      <div><b>Semestre :</b> {printMeta.semester}</div>
-                      <div><b>Type :</b> {printMeta.examType}</div>
+                      <div>
+                        <b>Année académique :</b> {printMeta.academicYear}
+                      </div>
+                      <div>
+                        <b>Classe :</b> {printMeta.classLabel}
+                      </div>
+                      <div>
+                        <b>Semestre :</b> {printMeta.semester}
+                      </div>
+                      <div>
+                        <b>Type :</b> {printMeta.examType}
+                      </div>
                     </div>
 
                     <div style={print.rule} />
@@ -557,12 +632,12 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                   {!anonymats.length ? (
                     <div style={empty}>Aucun anonymat chargé.</div>
                   ) : (
-                    <table className="print-table" style={table.base}>
+                    <table className={`print-table ${includeStudents ? "" : "hide-students"}`} style={table.base}>
                       <thead>
                         <tr>
                           <th style={table.th}>Code</th>
-                          <th style={table.th}>Étudiant</th>
-                          <th style={table.th}>Matricule</th>
+                          {includeStudents && <th style={table.th}>Étudiant</th>}
+                          {includeStudents && <th style={table.th}>Matricule</th>}
                           <th style={table.th}>Modifier</th>
                         </tr>
                       </thead>
@@ -572,6 +647,7 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                             key={r.studentId || r.anonCode}
                             row={r}
                             locked={isLocked}
+                            includeStudents={includeStudents}
                             onLocalChange={(studentId, newCode) => {
                               setAnonymats((prev) =>
                                 prev.map((x) =>
@@ -586,9 +662,7 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
                   )}
                 </div>
 
-                <div style={note.tip}>
-                  ✅ L’impression/PDF inclut le titre et les informations (année, classe, semestre, type).
-                </div>
+                <div style={note.tip}>✅ L’impression/PDF inclut le titre et les informations (année, classe, semestre, type).</div>
               </section>
             </div>
           </div>
@@ -598,16 +672,20 @@ export default function AnonymatsPage({ currentSection = "anonymats", onNavigate
   );
 }
 
-function AnonRow({ row, onLocalChange, locked }) {
+function AnonRow({ row, onLocalChange, locked, includeStudents }) {
   const [val, setVal] = useState(row.anonCode || "");
 
   useEffect(() => setVal(row.anonCode || ""), [row.anonCode]);
 
   return (
     <tr>
-      <td style={table.td}><b>{row.anonCode || "—"}</b></td>
-      <td style={table.td}>{row.fullName || "—"}</td>
-      <td style={table.td}>{row.matricule || "—"}</td>
+      <td style={table.td}>
+        <b>{row.anonCode || "—"}</b>
+      </td>
+
+      {includeStudents && <td style={table.td}>{row.fullName || "—"}</td>}
+      {includeStudents && <td style={table.td}>{row.matricule || "—"}</td>}
+
       <td style={{ ...table.td, whiteSpace: "nowrap" }}>
         <input
           style={inputSmall}
@@ -636,11 +714,21 @@ const page = {
 const grid = { twoCols: { display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16, alignItems: "start" } };
 const card = { base: { background: "#fff", borderRadius: 16, border: "1px solid var(--border)", padding: 16 }, headerRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" } };
 const typ = { h2: { margin: 0, fontSize: 18, fontWeight: 900 }, h3: { margin: "0 0 10px", fontSize: 14, fontWeight: 900 } };
-const form = { row: { display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }, field: { flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 6 }, label: { fontSize: 12, fontWeight: 800, color: "#6B7280" }, hint: { fontSize: 12, color: "#6B7280" }, input: { height: 40, borderRadius: 12, border: "1px solid #E5E7EB", padding: "0 12px", outline: "none", fontSize: 13, background: "#fff" } };
+const form = {
+  row: { display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" },
+  field: { flex: 1, minWidth: 240, display: "flex", flexDirection: "column", gap: 6 },
+  label: { fontSize: 12, fontWeight: 800, color: "#6B7280" },
+  hint: { fontSize: 12, color: "#6B7280" },
+  input: { height: 40, borderRadius: 12, border: "1px solid #E5E7EB", padding: "0 12px", outline: "none", fontSize: 13, background: "#fff" },
+};
 const checkRow = { display: "flex", gap: 8, alignItems: "center", fontSize: 13, fontWeight: 800, color: "#111827" };
 const divider = { margin: "14px 0", borderTop: "1px solid #E5E7EB" };
 const list = { box: { border: "1px solid #E5E7EB", borderRadius: 16, overflow: "hidden", background: "#fff" } };
-const table = { base: { width: "100%", borderCollapse: "collapse", fontSize: 13 }, th: { textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #E5E7EB", color: "#6B7280", fontSize: 12, fontWeight: 900, background: "#fafafa" }, td: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6" } };
+const table = {
+  base: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+  th: { textAlign: "left", padding: "10px 12px", borderBottom: "1px solid #E5E7EB", color: "#6B7280", fontSize: 12, fontWeight: 900, background: "#fafafa" },
+  td: { padding: "10px 12px", borderBottom: "1px solid #F3F4F6" },
+};
 const empty = { padding: 14, color: "#6B7280" };
 const badges = {
   anon: { fontSize: 12, fontWeight: 900, color: "#92400E", border: "1px solid #F59E0B", background: "#FEF3C7", borderRadius: 999, padding: "4px 10px" },
@@ -664,12 +752,6 @@ const inputSmall = { height: 34, borderRadius: 12, border: "1px solid #E5E7EB", 
 const print = {
   header: { padding: "6px 2px 10px" },
   title: { fontSize: 20, fontWeight: 1000, letterSpacing: 1, textAlign: "center", marginBottom: 10 },
-  metaGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: 6,
-    fontSize: 13,
-    lineHeight: "18px",
-  },
+  metaGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 13, lineHeight: "18px" },
   rule: { marginTop: 10, borderTop: "1px solid #E5E7EB" },
 };
