@@ -1,398 +1,451 @@
-// // src/components/VerticalNavBar.jsx
-// import {
-//   GraduationCap,
-//   Users,
-//   Calendar,
-//   FileText,
-//   BarChart3,
-//   Trophy,
-//   LayoutGrid,
-//   Settings,
-//   LogOut,
-//   BookOpen,
-//   Send,
-// } from "lucide-react";
-// import { colors } from "../styles/theme";
-
-// const VerticalNavBar = ({ currentSection = "etudiants", onNavigate }) => {
-//   const isActive = (key) =>
-//     currentSection === key
-//       ? { ...styles.link, ...styles.activeLink }
-//       : styles.link;
-
-//   const go = (key) => {
-//     if (onNavigate) onNavigate(key);
-//   };
-
-//   return (
-//     <aside style={styles.sidebar}>
-//       <div style={styles.header}>
-//         <div style={styles.logoBox} />
-//         <div>
-//           <p style={styles.subtitle}>Système de</p>
-//           <p style={styles.title}>Scolarité</p>
-//         </div>
-//       </div>
-
-//       <nav style={styles.nav}>
-//         <button style={isActive("etudiants")} onClick={() => go("etudiants")}>
-//           <Users size={18} />
-//           <span>Étudiants</span>
-//         </button>
-
-//         <button style={isActive("classes")} onClick={() => go("classes")}>
-//           <GraduationCap size={18} />
-//           <span>Classes</span>
-//         </button>
-
-//         <button style={isActive("presences")} onClick={() => go("presences")}>
-//           <Calendar size={18} />
-//           <span>Présences</span>
-//         </button>
-
-//         <button style={isActive("notes")} onClick={() => go("notes")}>
-//           <FileText size={18} />
-//           <span>Notes</span>
-//         </button>
-
-//         <button style={isActive("matieres")} onClick={() => go("matieres")}>
-//           <BookOpen size={18} />
-//           <span>Matières</span>
-//         </button>
-
-//         <button style={isActive("documents")} onClick={() => go("documents")}>
-//           <FileText size={18} />
-//           <span>Documents</span>
-//         </button>
-
-//         <button style={isActive("envoyer")} onClick={() => go("envoyer")}>
-//           <Send size={18} />
-//           <span>Envoyer</span>
-//         </button>
-
-//         <button style={isActive("rapports")} onClick={() => go("rapports")}>
-//           <BarChart3 size={18} />
-//           <span>Rapports</span>
-//         </button>
-
-//         {/* ✅ page Scolarité */}
-//         <button style={isActive("scolarite")} onClick={() => go("scolarite")}>
-//           <Trophy size={18} />
-//           <span>Scolarité</span>
-//         </button>
-
-//         <button style={isActive("dashboard")} onClick={() => go("dashboard")}>
-//           <LayoutGrid size={18} />
-//           <span>Tableau de bord</span>
-//         </button>
-
-//         {/* ✅ page UE / Modules */}
-//         <button style={isActive("modules")} onClick={() => go("modules")}>
-//           <LayoutGrid size={18} />
-//           <span>UE / Modules</span>
-//         </button>
-//       </nav>
-
-//       <div style={styles.footer}>
-//         <button style={isActive("settings")} onClick={() => go("settings")}>
-//           <Settings size={18} />
-//           <span>Paramètres</span>
-//         </button>
-//         <button style={styles.link} onClick={() => go("logout")}>
-//           <LogOut size={18} />
-//           <span>Déconnexion</span>
-//         </button>
-//       </div>
-//     </aside>
-//   );
-// };
-
-// const styles = {
-//   sidebar: {
-//     width: "240px",
-//     minWidth: "240px",
-//     background: "var(--bg)",
-//     borderRight: `1px solid ${colors.border}`,
-//     display: "flex",
-//     flexDirection: "column",
-//     height: "100vh",
-//   },
-//   header: {
-//     display: "flex",
-//     gap: "0.5rem",
-//     alignItems: "center",
-//     padding: "1.25rem 1.25rem 1rem",
-//     borderBottom: `1px solid ${colors.border}`,
-//   },
-//   logoBox: {
-//     width: "40px",
-//     height: "40px",
-//     borderRadius: "999px",
-//     background: "var(--bg-sidebar-hi)",
-//   },
-//   subtitle: { fontSize: "0.65rem", color: colors.gray, margin: 0 },
-//   title: {
-//     fontSize: "0.8rem",
-//     fontWeight: 600,
-//     margin: 0,
-//     color: "var(--fg)",
-//   },
-//   nav: {
-//     padding: "1rem 0",
-//     display: "flex",
-//     flexDirection: "column",
-//     gap: "0.25rem",
-//     flex: 1,
-//   },
-//   link: {
-//     background: "none",
-//     border: "none",
-//     display: "flex",
-//     gap: "0.75rem",
-//     alignItems: "center",
-//     padding: "0.6rem 1.25rem",
-//     fontSize: "0.8rem",
-//     color: "var(--fg)",
-//     cursor: "pointer",
-//     textAlign: "left",
-//   },
-//   activeLink: {
-//     background: "var(--bg-sidebar-hi)",
-//     color: colors.teal,
-//     borderRadius: "0.75rem",
-//     border: `1px solid ${colors.teal}`,
-//   },
-//   footer: {
-//     borderTop: `1px solid ${colors.border}`,
-//     padding: "0.75rem 0 1rem",
-//     display: "flex",
-//     flexDirection: "column",
-//     gap: "0.25rem",
-//   },
-// };
-
-// export default VerticalNavBar;
-
-
-
-
 // src/components/VerticalNavBar.jsx
+//
+// Prérequis — ajouter dans index.html <head> :
+// <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+//
+// Usage :
+// <VerticalNavBar currentSection="dashboard" onNavigate={(key) => setSection(key)} />
+
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  GraduationCap,
-  Users,
-  Calendar,
-  FileText,
-  BarChart3,
-  Trophy,
-  LayoutGrid,
-  Settings,
-  LogOut,
-  BookOpen,
-  Send,
-  Shield,
-  ClipboardList,
+  LayoutGrid, Users, GraduationCap, BookOpen, Layers,
+  FileText, PenLine, ListChecks, ClipboardCheck, ShieldCheck,
+  BarChart3, Trophy, Settings, LogOut, ChevronDown,
 } from "lucide-react";
-import { colors } from "../styles/theme";
 
-export default function VerticalNavBar({ currentSection = "dashboard", onNavigate }) {
-  const go = (key) => onNavigate?.(key);
+/* ─────────────────────────────────────────────────────────────
+   PALETTE & TOKENS
+───────────────────────────────────────────────────────────── */
+const C = {
+  teal:       "#0F9B72",
+  tealBg:     "#EAF9F3",
+  tealBd:     "#7ECDB0",
+  tealText:   "#0A7A5A",
+  tealGlow:   "rgba(15,155,114,0.18)",
+  tealShadow: "rgba(15,155,114,0.30)",
+  fg:         "#1A1D23",
+  fg2:        "#8A92A0",
+  bg:         "#F4F6F9",
+  card:       "#ffffff",
+  bd:         "rgba(0,0,0,0.07)",
+};
 
-  const Item = ({ k, icon: Icon, label }) => {
-    const active = currentSection === k;
-    return (
-      <button
-        onClick={() => go(k)}
-        style={{
-          ...styles.item,
-          ...(active ? styles.itemActive : null),
-        }}
-      >
-        <span style={{ ...styles.iconWrap, ...(active ? styles.iconWrapActive : null) }}>
-          <Icon size={18} />
-        </span>
-        <span style={styles.itemLabel}>{label}</span>
-        {active && <span style={styles.activeDot} />}
-      </button>
-    );
-  };
+/* ─────────────────────────────────────────────────────────────
+   STRUCTURE DE NAVIGATION
+───────────────────────────────────────────────────────────── */
+const NAV_SECTIONS = [
+  {
+    id: "gestion",
+    label: "Gestion",
+    Icon: LayoutGrid,
+    items: [
+      { key: "dashboard", Icon: LayoutGrid,    label: "Tableau de bord" },
+      { key: "etudiants", Icon: Users,         label: "Étudiants" },
+      { key: "classes",   Icon: GraduationCap, label: "Classes" },
+      { key: "matieres",  Icon: BookOpen,      label: "Matières" },
+      { key: "modules",   Icon: Layers,        label: "UE / Modules" },
+      { key: "documents", Icon: FileText,      label: "Documents" },
+    ],
+  },
+  {
+    id: "evaluations",
+    label: "Évaluations",
+    Icon: PenLine,
+    items: [
+      { key: "notes",          Icon: PenLine,        label: "Notes",             hint: "Saisie & PV" },
+      { key: "liste_presence", Icon: ListChecks,     label: "Liste de présence", hint: "Feuilles & exports" },
+      { key: "evaluations",    Icon: ClipboardCheck, label: "Évaluations",       hint: "Anonymat" },
+      { key: "anonymats",      Icon: ShieldCheck,    label: "Anonymats" },
+    ],
+  },
+  {
+    id: "suivi",
+    label: "Suivi",
+    Icon: BarChart3,
+    items: [
+      { key: "rapports",  Icon: BarChart3, label: "Rapports" },
+      { key: "scolarite", Icon: Trophy,    label: "Scolarité" },
+    ],
+  },
+];
+
+/* ─────────────────────────────────────────────────────────────
+   NavItem — un élément du menu
+───────────────────────────────────────────────────────────── */
+function NavItem({ navKey, Icon, label, hint, active, onClick }) {
+  const [hovered, setHovered] = useState(false);
 
   return (
-    <aside style={styles.sidebar}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div style={styles.logo}>
-          <GraduationCap size={18} />
+    <button
+      onClick={() => onClick(navKey)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      aria-current={active ? "page" : undefined}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "8px 9px",
+        border: "none",
+        background: active ? C.tealBg : hovered ? "rgba(0,0,0,0.04)" : "transparent",
+        borderRadius: 10,
+        cursor: "pointer",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        textAlign: "left",
+        outline: "none",
+        position: "relative",
+        transition: "background 140ms ease",
+      }}
+    >
+      {/* Pill latérale active */}
+      {active && (
+        <span
+          style={{
+            position: "absolute",
+            left: 0,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 3,
+            height: 20,
+            borderRadius: "0 3px 3px 0",
+            background: C.teal,
+          }}
+        />
+      )}
+
+      {/* Icône */}
+      <span
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 8,
+          display: "grid",
+          placeItems: "center",
+          flexShrink: 0,
+          background: active ? C.tealBg : hovered ? C.card : C.bg,
+          border: `1px solid ${active ? C.tealBd : C.bd}`,
+          boxShadow: active ? `0 2px 8px ${C.tealGlow}` : "none",
+          color: active ? C.teal : C.fg2,
+          transition: "all 140ms ease",
+        }}
+      >
+        <Icon size={13} strokeWidth={2.2} />
+      </span>
+
+      {/* Texte */}
+      <span style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 1 }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: active ? C.tealText : C.fg,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            lineHeight: "15px",
+          }}
+        >
+          {label}
+        </span>
+        {hint && (
+          <span style={{ fontSize: 10, fontWeight: 600, color: C.fg2, lineHeight: "13px" }}>
+            {hint}
+          </span>
+        )}
+      </span>
+
+      {/* Dot actif */}
+      {active && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: "50%",
+            background: C.teal,
+            flexShrink: 0,
+          }}
+        />
+      )}
+    </button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   AccordionSection — section accordéon animée
+───────────────────────────────────────────────────────────── */
+function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigate }) {
+  const bodyRef  = useRef(null);
+  const [height, setHeight] = useState(0);
+  const hasActive = section.items.some((i) => i.key === currentSection);
+  const highlighted = isOpen || hasActive;
+
+  useEffect(() => {
+    if (bodyRef.current) setHeight(bodyRef.current.scrollHeight);
+  }, [section.items.length]);
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${highlighted ? C.tealBd : C.bd}`,
+        borderRadius: 14,
+        overflow: "hidden",
+        background: C.card,
+        transition: "border-color 200ms ease",
+      }}
+    >
+      {/* En-tête accordéon */}
+      <button
+        onClick={() => onToggle(section.id)}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          padding: "10px 11px",
+          cursor: "pointer",
+          border: "none",
+          background: "transparent",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          textAlign: "left",
+          outline: "none",
+        }}
+      >
+        <span
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            display: "grid",
+            placeItems: "center",
+            background: highlighted ? C.tealBg : C.bg,
+            border: `1px solid ${highlighted ? C.tealBd : C.bd}`,
+            flexShrink: 0,
+            color: highlighted ? C.teal : C.fg2,
+            transition: "all 180ms ease",
+          }}
+        >
+          <section.Icon size={13} strokeWidth={2.2} />
+        </span>
+
+        <span
+          style={{
+            flex: 1,
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: "0.7px",
+            textTransform: "uppercase",
+            color: highlighted ? C.tealText : C.fg2,
+            transition: "color 180ms ease",
+          }}
+        >
+          {section.label}
+        </span>
+
+        <ChevronDown
+          size={14}
+          strokeWidth={2.2}
+          color={C.fg2}
+          style={{
+            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 220ms cubic-bezier(.4,0,.2,1)",
+            flexShrink: 0,
+          }}
+        />
+      </button>
+
+      {/* Panneau animé */}
+      <div
+        style={{
+          maxHeight: isOpen ? height + 8 : 0,
+          overflow: "hidden",
+          opacity: isOpen ? 1 : 0,
+          transition:
+            "max-height 260ms cubic-bezier(.4,0,.2,1), opacity 200ms ease",
+        }}
+      >
+        <div ref={bodyRef} style={{ padding: "0 6px 6px" }}>
+          {section.items.map((item) => (
+            <NavItem
+              key={item.key}
+              navKey={item.key}
+              Icon={item.Icon}
+              label={item.label}
+              hint={item.hint}
+              active={currentSection === item.key}
+              onClick={onNavigate}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FooterButton
+───────────────────────────────────────────────────────────── */
+function FooterButton({ Icon, label, onClick }) {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        padding: "9px 11px",
+        border: `1px solid ${hovered ? C.tealBd : C.bd}`,
+        background: hovered ? C.card : C.bg,
+        borderRadius: 10,
+        cursor: "pointer",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        fontSize: 12,
+        fontWeight: 700,
+        color: hovered ? C.fg : C.fg2,
+        outline: "none",
+        transition: "background 140ms ease, color 140ms ease, border-color 140ms ease",
+      }}
+    >
+      <Icon size={14} strokeWidth={2.2} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMPOSANT PRINCIPAL
+───────────────────────────────────────────────────────────── */
+export default function VerticalNavBar({
+  currentSection = "dashboard",
+  onNavigate,
+}) {
+  // Trouve la section parente de la page active
+  const findParent = useCallback((key) => {
+    for (const sec of NAV_SECTIONS) {
+      if (sec.items.some((i) => i.key === key)) return sec.id;
+    }
+    return null;
+  }, []);
+
+  const [openSection, setOpenSection] = useState(
+    () => findParent(currentSection) ?? NAV_SECTIONS[0].id
+  );
+
+  // Synchronise si currentSection change de l'extérieur
+  useEffect(() => {
+    const parent = findParent(currentSection);
+    if (parent) setOpenSection(parent);
+  }, [currentSection, findParent]);
+
+  const handleToggle = (id) =>
+    setOpenSection((prev) => (prev === id ? null : id));
+
+  const handleNavigate = useCallback(
+    (key) => onNavigate?.(key),
+    [onNavigate]
+  );
+
+  return (
+    <aside
+      style={{
+        width: 252,
+        minWidth: 252,
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: C.card,
+        borderRight: `1px solid ${C.bd}`,
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
+        boxSizing: "border-box",
+      }}
+    >
+      {/* ── En-tête ── */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 11,
+          padding: "16px 14px",
+          borderBottom: `1px solid ${C.bd}`,
+          flexShrink: 0,
+        }}
+      >
+        <div
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 11,
+            background: C.teal,
+            display: "grid",
+            placeItems: "center",
+            flexShrink: 0,
+            boxShadow: `0 4px 14px ${C.tealShadow}`,
+          }}
+        >
+          <GraduationCap size={17} color="#fff" strokeWidth={2.4} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={styles.subtitle}>Système de</div>
-          <div style={styles.title}>Scolarité</div>
+          <div style={{ fontSize: 10, color: C.fg2, fontWeight: 500, lineHeight: "14px" }}>
+            Système de
+          </div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.fg, lineHeight: "18px" }}>
+            Scolarité
+          </div>
         </div>
       </div>
 
-      {/* Nav */}
-      <div style={styles.scroll}>
-        <div style={styles.sectionTitle}>Gestion</div>
-        <nav style={styles.nav}>
-          <Item k="dashboard" icon={LayoutGrid} label="Tableau de bord" />
-          <Item k="etudiants" icon={Users} label="Étudiants" />
-          <Item k="classes" icon={GraduationCap} label="Classes" />
-          <Item k="presences" icon={Calendar} label="Présences" />
-          <Item k="notes" icon={FileText} label="Notes" />
-          <Item k="matieres" icon={BookOpen} label="Matières" />
-          <Item k="modules" icon={LayoutGrid} label="UE / Modules" />
-          <Item k="documents" icon={FileText} label="Documents" />
-          <Item k="envoyer" icon={Send} label="Envoyer" />
-        </nav>
-
-        <div style={{ height: 14 }} />
-
-        <div style={styles.sectionTitle}>Évaluations</div>
-        <nav style={styles.nav}>
-          <Item k="evaluations" icon={ClipboardList} label="Évaluations (anonymat)" />
-          <Item k="anonymats" icon={Shield} label="Anonymats" />
-        </nav>
-
-        <div style={{ height: 14 }} />
-
-        <div style={styles.sectionTitle}>Suivi</div>
-        <nav style={styles.nav}>
-          <Item k="rapports" icon={BarChart3} label="Rapports" />
-          <Item k="scolarite" icon={Trophy} label="Scolarité" />
-        </nav>
+      {/* ── Accordéon ── */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "12px 8px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          scrollbarWidth: "none",
+        }}
+      >
+        {NAV_SECTIONS.map((section) => (
+          <AccordionSection
+            key={section.id}
+            section={section}
+            isOpen={openSection === section.id}
+            currentSection={currentSection}
+            onToggle={handleToggle}
+            onNavigate={handleNavigate}
+          />
+        ))}
       </div>
 
-      {/* Footer */}
-      <div style={styles.footer}>
-        <button style={styles.footerBtn} onClick={() => go("settings")}>
-          <Settings size={18} />
-          <span>Paramètres</span>
-        </button>
-        <button style={styles.footerBtn} onClick={() => go("logout")}>
-          <LogOut size={18} />
-          <span>Déconnexion</span>
-        </button>
+      {/* ── Pied de page ── */}
+      <div
+        style={{
+          padding: 8,
+          borderTop: `1px solid ${C.bd}`,
+          display: "flex",
+          flexDirection: "column",
+          gap: 4,
+          flexShrink: 0,
+          background: "rgba(0,0,0,0.01)",
+        }}
+      >
+        <FooterButton
+          Icon={Settings}
+          label="Paramètres"
+          onClick={() => handleNavigate("settings")}
+        />
+        <FooterButton
+          Icon={LogOut}
+          label="Déconnexion"
+          onClick={() => handleNavigate("logout")}
+        />
       </div>
     </aside>
   );
 }
-
-const styles = {
-  sidebar: {
-    width: 260,
-    minWidth: 260,
-    height: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    background: "var(--bg)",
-    borderRight: `1px solid ${colors.border}`,
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    padding: "18px 16px",
-    borderBottom: `1px solid ${colors.border}`,
-  },
-  logo: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    display: "grid",
-    placeItems: "center",
-    background: "var(--bg-sidebar-hi)",
-    border: `1px solid ${colors.border}`,
-    color: colors.teal,
-    flexShrink: 0,
-  },
-  subtitle: { fontSize: 12, color: colors.gray, lineHeight: "14px" },
-  title: { fontSize: 14, fontWeight: 800, color: "var(--fg)", lineHeight: "18px" },
-
-  scroll: {
-    flex: 1,
-    overflowY: "auto",
-    padding: "14px 10px 10px",
-  },
-
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: 800,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: colors.gray,
-    padding: "10px 10px 6px",
-  },
-
-  nav: { display: "flex", flexDirection: "column", gap: 6 },
-
-  item: {
-    width: "100%",
-    border: "1px solid transparent",
-    background: "transparent",
-    borderRadius: 14,
-    padding: "10px 10px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    cursor: "pointer",
-    textAlign: "left",
-    color: "var(--fg)",
-    position: "relative",
-    transition: "all 120ms ease",
-  },
-  itemActive: {
-    background: "var(--bg-sidebar-hi)",
-    border: `1px solid ${colors.teal}`,
-    boxShadow: "0 6px 18px rgba(0,0,0,0.06)",
-  },
-  iconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    display: "grid",
-    placeItems: "center",
-    border: `1px solid ${colors.border}`,
-    background: "#fff",
-    color: "var(--fg)",
-    flexShrink: 0,
-  },
-  iconWrapActive: {
-    border: `1px solid ${colors.teal}`,
-    color: colors.teal,
-  },
-  itemLabel: {
-    fontSize: 13,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  },
-  activeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    background: colors.teal,
-    position: "absolute",
-    right: 12,
-  },
-
-  footer: {
-    padding: 12,
-    borderTop: `1px solid ${colors.border}`,
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  },
-  footerBtn: {
-    width: "100%",
-    borderRadius: 14,
-    border: `1px solid ${colors.border}`,
-    background: "#fff",
-    padding: "10px 12px",
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 700,
-  },
-};

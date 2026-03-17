@@ -19,6 +19,10 @@ export default function EtudiantsPage({
   const [filter, setFilter] = useState("all"); // "all" | "inscrits" | "non"
   const [openAdd, setOpenAdd] = useState(false);
 
+  // UI
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   // détail
   const [openDetail, setOpenDetail] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -28,25 +32,41 @@ export default function EtudiantsPage({
   const [editingStudent, setEditingStudent] = useState(null);
 
   const loadStudents = async (search = "") => {
+    setLoading(true);
+    setError("");
+
     try {
-      const res = await fetch(
-        `${API_BASE}/students${search ? `?q=${encodeURIComponent(search)}` : ""}`
-      );
-      const data = await res.json();
+      const trimmed = (search || "").trim();
+      const url = `${API_BASE}/students${
+        trimmed ? `?q=${encodeURIComponent(trimmed)}` : ""
+      }`;
+
+      const res = await fetch(url);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error || "Erreur lors du chargement des étudiants."
+        );
+      }
+
       setStudents(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (e) {
       setStudents([]);
+      setError(e?.message || "Erreur réseau.");
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
     loadStudents();
-    // eslint-disable-next-line
   }, []);
 
   const { totalCount, inscritCount, nonInscritCount } = useMemo(() => {
     const total = students.length;
     const ins = students.filter((s) => !!s.registrationFeePaid).length;
+
     return {
       totalCount: total,
       inscritCount: ins,
@@ -88,10 +108,12 @@ export default function EtudiantsPage({
 
       registrationFeePaid: payload.registrationFeePaid === true,
 
-      // ✅ AJOUT: photoUrl si fourni
-      photoUrl: payload.photoUrl || null,
+      // InscrireEtudiantModal renvoie photoPreview
+      photoUrl:
+        typeof payload.photoPreview !== "undefined"
+          ? payload.photoPreview
+          : null,
 
-      // champs fiche
       livingLanguage: payload.livingLanguage || null,
       bacSerie: payload.bacSerie || null,
       birthPlace: payload.birthPlace || null,
@@ -119,13 +141,17 @@ export default function EtudiantsPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur d’enregistrement");
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erreur d’enregistrement");
+      }
 
       setOpenAdd(false);
       await loadStudents(query);
 
-      if (data.matricule) {
+      if (data?.matricule) {
         alert(`Étudiant créé.\nMatricule: ${data.matricule}`);
       } else {
         alert(
@@ -133,7 +159,7 @@ export default function EtudiantsPage({
         );
       }
     } catch (e) {
-      alert(e.message || "Échec de l’enregistrement");
+      alert(e?.message || "Échec de l’enregistrement");
     }
   };
 
@@ -143,10 +169,20 @@ export default function EtudiantsPage({
     setOpenDetail(true);
   };
 
+  const handleCloseDetail = () => {
+    setOpenDetail(false);
+    setSelectedStudent(null);
+  };
+
   /* ————— ÉDITION ————— */
   const handleEditStudent = (student) => {
     setEditingStudent(student);
     setOpenEdit(true);
+  };
+
+  const handleCloseEdit = () => {
+    setOpenEdit(false);
+    setEditingStudent(null);
   };
 
   const handleSaveEdit = async (payload) => {
@@ -178,8 +214,9 @@ export default function EtudiantsPage({
 
       registrationFeePaid: payload.registrationFeePaid === true,
 
-      // ✅ AJOUT: photoUrl modifiable
-      photoUrl: payload.photoUrl || null,
+      // EditerEtudiantModal renvoie photoUrl
+      photoUrl:
+        typeof payload.photoUrl !== "undefined" ? payload.photoUrl : null,
 
       livingLanguage: payload.livingLanguage || null,
       bacSerie: payload.bacSerie || null,
@@ -208,15 +245,18 @@ export default function EtudiantsPage({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erreur de mise à jour");
 
-      setOpenEdit(false);
-      setEditingStudent(null);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        throw new Error(data?.error || "Erreur de mise à jour");
+      }
+
+      handleCloseEdit();
       await loadStudents(query);
       alert("Informations de l’étudiant mises à jour.");
     } catch (e) {
-      alert(e.message || "Échec de la mise à jour");
+      alert(e?.message || "Échec de la mise à jour");
     }
   };
 
@@ -237,7 +277,6 @@ export default function EtudiantsPage({
 
   return (
     <div style={styles.layout}>
-      {/* Colonne gauche */}
       <aside style={styles.left}>
         <VerticalNavBar
           currentSection={currentSection}
@@ -245,9 +284,9 @@ export default function EtudiantsPage({
         />
       </aside>
 
-      {/* Colonne droite */}
       <main style={styles.right}>
         <HorizontalNavBar />
+
         <div style={styles.pageBody}>
           <div style={styles.container}>
             <GestionDesEtudiantsHeader
@@ -263,10 +302,14 @@ export default function EtudiantsPage({
                 non: nonInscritCount,
               }}
               onFilterChange={setFilter}
+              loading={loading}
+              error={error}
             />
 
             <ListesDesEtudiantsSection
               students={visibleStudents}
+              loading={loading}
+              error={error}
               onShowDetail={handleShowDetail}
               onPrintCertificat={handlePrintCertificat}
               onPrintCarte={handlePrintCarte}
@@ -285,7 +328,7 @@ export default function EtudiantsPage({
       <EtudiantDetailModal
         open={openDetail}
         student={selectedStudent}
-        onClose={() => setOpenDetail(false)}
+        onClose={handleCloseDetail}
         onEdit={handleEditStudent}
         onPrintCertificat={handlePrintCertificat}
         onPrintCarte={handlePrintCarte}
@@ -295,7 +338,7 @@ export default function EtudiantsPage({
       <EditerEtudiantModal
         open={openEdit}
         student={editingStudent}
-        onClose={() => setOpenEdit(false)}
+        onClose={handleCloseEdit}
         onSave={handleSaveEdit}
       />
     </div>
@@ -325,7 +368,10 @@ const styles = {
     overflow: "hidden",
     background: "#f5f6f8",
   },
-  pageBody: { flex: 1, overflowY: "auto" },
+  pageBody: {
+    flex: 1,
+    overflowY: "auto",
+  },
   container: {
     maxWidth: "1600px",
     margin: "1.5rem auto",

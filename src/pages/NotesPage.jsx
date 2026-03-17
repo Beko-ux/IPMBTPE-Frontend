@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Printer, Lock, BarChart2, Download, Shield, User } from "lucide-react";
+import { Printer, Lock, LockOpen, BarChart2, Download, Shield, User } from "lucide-react";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -37,9 +37,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // -------------------------
-  // Filtres obligatoires
-  // -------------------------
   const [academicYear, setAcademicYear] = useState("2025-2026");
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
@@ -47,29 +44,24 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   const [semester, setSemester] = useState("S1");
   const [examType, setExamType] = useState("CC");
-  const [sessionType, setSessionType] = useState("main"); // main | rattrapage
+  const [sessionType, setSessionType] = useState("main");
 
-  // ✅ sessionName (contexte)
   const [sessionName, setSessionName] = useState("SESSION PRINCIPALE");
 
-  // subjects
   const [subjects, setSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState("");
 
-  // catalogue
   const [catalogMap, setCatalogMap] = useState({});
   const [loadingCatalog, setLoadingCatalog] = useState(false);
 
-  // notes
-  const [notes, setNotes] = useState({}); // nominatif: key=studentKey | anonyme: key=anonCode
+  const [notes, setNotes] = useState({});
   const [locked, setLocked] = useState(false);
   const [preFilled, setPreFilled] = useState({});
   const [activeKey, setActiveKey] = useState("");
 
-  // ✅ anonymat session context + list
-  const [examCtx, setExamCtx] = useState(null); // { exists, examId, hasAnonymous, locked? }
-  const [anonList, setAnonList] = useState([]); // [{anonCode, studentId?}]
+  const [examCtx, setExamCtx] = useState(null);
+  const [anonList, setAnonList] = useState([]);
   const [loadingAnon, setLoadingAnon] = useState(false);
 
   /* ------------------------- Charger classes ------------------------- */
@@ -112,15 +104,11 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       const nameB = (b.fullName || "").toUpperCase();
       if (nameA < nameB) return -1;
       if (nameA > nameB) return 1;
-      const matA = (a.matricule || "").toUpperCase();
-      const matB = (b.matricule || "").toUpperCase();
-      return matA.localeCompare(matB);
+      return (a.matricule || "").toUpperCase().localeCompare((b.matricule || "").toUpperCase());
     });
   }, [students]);
 
-  /* ------------------------- Charger matières (ECUE) avec isAnonymous -------------------------
-     ✅ On utilise /evaluations/subjects pour récupérer {label, code, isAnonymous, subjectId}
-  ------------------------------------------------------------------------------------------- */
+  /* ------------------------- Charger matières (ECUE) ------------------------- */
   const getSubjectLabel = (s) => String(s?.label || s?.ueLabel || s?.name || "").trim();
 
   useEffect(() => {
@@ -161,7 +149,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
           uniq.push({
             ...s,
-            id: s.subjectId || s.id, // ✅ important: subjectId stable
+            id: s.subjectId || s.id,
             label,
             isAnonymous: !!s.isAnonymous,
           });
@@ -187,7 +175,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   const isAnonymousSubject = !!selectedSubject?.isAnonymous;
 
-  /* ------------------------- Charger catalogue code ECUE (optionnel) ------------------------- */
+  /* ------------------------- Catalogue ECUE ------------------------- */
   useEffect(() => {
     const loadCatalog = async () => {
       setCatalogMap({});
@@ -206,10 +194,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
         const res = await fetch(`${API_BASE}/subjects/catalog?${qs.toString()}`);
         const data = await res.json().catch(() => []);
 
-        if (!res.ok) {
-          setCatalogMap({});
-          return;
-        }
+        if (!res.ok) { setCatalogMap({}); return; }
 
         const arr = Array.isArray(data) ? data : [];
         const map = {};
@@ -232,12 +217,10 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   /* ------------------------- Helpers notes ------------------------- */
   const scaleMax = 20;
-
   const keyForStudent = (s) => s.id || s.matricule || String(s._id || "");
   const isRetake = sessionType === "rattrapage";
   const mode = isRetake ? "retake" : "main";
 
-  // ✅ Résolution subjectCode (backend l'exige)
   const resolvedSubjectCode = useMemo(() => {
     if (!selectedSubject) return "";
 
@@ -265,10 +248,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     if (!canEdit) return;
 
     let v = (value ?? "").toString().replace(",", ".");
-    if (v === "") {
-      setNotes((prev) => ({ ...prev, [key]: "" }));
-      return;
-    }
+    if (v === "") { setNotes((prev) => ({ ...prev, [key]: "" })); return; }
     const num = Number(v);
     if (Number.isNaN(num)) return;
     if (num < 0) return;
@@ -295,7 +275,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     return n >= 10 ? "Validé" : "Non validé";
   };
 
-  /* ------------------------- (A) Charger examCtx + anonymats si ECUE anonyme ------------------------- */
+  /* ------------------------- Anonymats ------------------------- */
   useEffect(() => {
     const run = async () => {
       setExamCtx(null);
@@ -305,7 +285,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
       setLoadingAnon(true);
       try {
-        // 1) context -> examId
         const qs = new URLSearchParams();
         qs.set("academicYear", normalizeAcademicYear(academicYear));
         qs.set("classId", selectedClass.id);
@@ -319,13 +298,11 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
         setExamCtx(ctx);
 
-        if (!ctx?.exists) { setAnonList([]); return; }
-        if (!ctx?.hasAnonymous) { setAnonList([]); return; }
+        if (!ctx?.exists || !ctx?.hasAnonymous) { setAnonList([]); return; }
 
-        // 2) list anonymats
         const qs2 = new URLSearchParams();
         qs2.set("examId", ctx.examId);
-        qs2.set("includeStudents", "0"); // privacy
+        qs2.set("includeStudents", "0");
 
         const res2 = await fetch(`${API_BASE}/evaluation-session-anonymats?${qs2.toString()}`);
         const data2 = await res2.json();
@@ -346,7 +323,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     run();
   }, [selectedClassId, selectedSubjectId, academicYear, semester, examType, sessionName, isAnonymousSubject]);
 
-  /* ------------------------- Charger sheet (nominatif OU anonyme) ------------------------- */
+  /* ------------------------- Charger sheet ------------------------- */
   useEffect(() => {
     const loadSheet = async () => {
       setNotes({});
@@ -439,17 +416,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
     loadSheet();
   }, [
-    selectedClassId,
-    selectedSubjectId,
-    academicYear,
-    semester,
-    examType,
-    sessionType,
-    sortedStudents,
-    resolvedSubjectCode,
-    isAnonymousSubject,
-    examCtx?.examId,
-    anonList,
+    selectedClassId, selectedSubjectId, academicYear, semester, examType, sessionType,
+    sortedStudents, resolvedSubjectCode, isAnonymousSubject, examCtx?.examId, anonList,
   ]);
 
   /* ------------------------- Save ------------------------- */
@@ -457,12 +425,9 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     if (!selectedClass) return alert("Veuillez choisir une classe.");
     if (!selectedSubject) return alert("Veuillez choisir une matière.");
     if (!semester) return alert("Veuillez choisir le semestre (S1 / S2).");
-    if (!examType) return alert("Veuillez choisir le type d’examen (CC / SN / EXAMEN).");
+    if (!examType) return alert("Veuillez choisir le type d'examen (CC / SN / EXAMEN).");
     if (!resolvedSubjectCode) return alert("ECUE code introuvable (subjectCode).");
-
-    if (!canEdit) {
-      return alert("Cette feuille est verrouillée (session principale). Utilisez un rattrapage.");
-    }
+    if (!canEdit) return alert("Cette feuille est verrouillée (session principale). Utilisez un rattrapage.");
 
     let payloadNotes = [];
 
@@ -499,16 +464,11 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     const body = {
       academicYear: normalizeAcademicYear(academicYear),
       classId: selectedClass.id,
-      semester,
-      examType,
-
+      semester, examType,
       subjectId: String(selectedSubject.id),
       subjectLabel: getSubjectLabel(selectedSubject),
       subjectCode: resolvedSubjectCode,
-
-      scaleMax,
-      mode,
-      notes: payloadNotes,
+      scaleMax, mode, notes: payloadNotes,
     };
 
     if (isAnonymousSubject) body.examId = examCtx.examId;
@@ -523,7 +483,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erreur lors de l’enregistrement.");
+      if (!res.ok) throw new Error(data?.error || "Erreur lors de l'enregistrement.");
 
       const sheet = data?.sheet || null;
       if (sheet) {
@@ -562,7 +522,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       alert("Notes enregistrées avec succès.");
     } catch (e) {
       console.error(e);
-      alert(e.message || "Échec de l’enregistrement des notes.");
+      alert(e.message || "Échec de l'enregistrement des notes.");
     } finally {
       setSaving(false);
     }
@@ -570,21 +530,18 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
   /* ------------------------- Lock ------------------------- */
   const handleLock = async () => {
-    if (!selectedClass || !selectedSubject) return alert("Choisissez d’abord la classe et la matière.");
+    if (!selectedClass || !selectedSubject) return alert("Choisissez d'abord la classe et la matière.");
     if (!resolvedSubjectCode) return alert("ECUE code introuvable (subjectCode).");
-    if (sessionType !== "main") return alert("Le verrouillage s’applique à la session principale (pas au rattrapage).");
+    if (sessionType !== "main") return alert("Le verrouillage s'applique à la session principale (pas au rattrapage).");
     if (!window.confirm("Valider / verrouiller ces notes ? (elles ne seront plus modifiables)")) return;
 
     const body = {
       academicYear: normalizeAcademicYear(academicYear),
       classId: selectedClass.id,
-      semester,
-      examType,
-
+      semester, examType,
       subjectId: String(selectedSubject.id),
       subjectLabel: getSubjectLabel(selectedSubject) || "",
       subjectCode: resolvedSubjectCode,
-
       scaleMax,
     };
 
@@ -615,6 +572,51 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     }
   };
 
+  /* ========================= ✅ UNLOCK ========================= */
+  const handleUnlock = async () => {
+    if (!selectedClass || !selectedSubject) return alert("Choisissez d'abord la classe et la matière.");
+    if (!resolvedSubjectCode) return alert("ECUE code introuvable (subjectCode).");
+    if (!window.confirm(
+      "Déverrouiller cette feuille de notes ?\n\nAttention : les notes pourront à nouveau être modifiées."
+    )) return;
+
+    const body = {
+      academicYear: normalizeAcademicYear(academicYear),
+      classId: selectedClass.id,
+      semester, examType,
+      subjectId: String(selectedSubject.id),
+      subjectLabel: getSubjectLabel(selectedSubject) || "",
+      subjectCode: resolvedSubjectCode,
+      scaleMax,
+    };
+
+    if (isAnonymousSubject) {
+      if (!examCtx?.examId) return alert("Contexte anonymat introuvable (examId).");
+      body.examId = examCtx.examId;
+    }
+
+    try {
+      setSaving(true);
+
+      const res = await fetch(`${API_BASE}/notes/sheet/unlock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Erreur lors du déverrouillage.");
+
+      setLocked(false);
+      alert("Notes déverrouillées. Vous pouvez à nouveau les modifier.");
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "Échec du déverrouillage.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCancel = () => {
     if (window.confirm("Annuler les modifications non enregistrées ?")) {
       setActiveKey("");
@@ -629,14 +631,12 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
       }`
     : "Aucune classe sélectionnée";
 
-  // UI states
   const showAnonWarning =
     isAnonymousSubject &&
     selectedClass &&
     selectedSubject &&
     (!examCtx?.exists || !examCtx?.hasAnonymous || !anonList.length);
 
-  // ✅ NEW: libellé compact session
   const sessionLabel = sessionType === "rattrapage" ? "RATTRAPAGE" : "PRINCIPALE";
 
   return (
@@ -655,7 +655,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <h1 style={headerStyles.title}>Gestion des notes</h1>
 
-                  {/* ✅ Badge mode (toujours) */}
                   <span style={isAnonymousSubject ? pillAnon : pillNom}>
                     {isAnonymousSubject ? <Shield size={14} /> : <User size={14} />}
                     {isAnonymousSubject ? "ANONYME" : "NOMINATIF"}
@@ -663,7 +662,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                 </div>
 
                 <p style={headerStyles.subtitle}>
-                  Sélectionnez l’année, la classe, le semestre, l’examen, la session et la matière (ECUE).
+                  Sélectionnez l'année, la classe, le semestre, l'examen, la session et la matière (ECUE).
                 </p>
 
                 <p style={headerStyles.badge}>
@@ -672,7 +671,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
                 <p style={headerStyles.classInfo}>{classLabel}</p>
 
-                {/* ✅ REMPLACE la ligne "Matière : ... · Code ECUE : ... · ..." par des chips */}
                 <div style={headerStyles.metaRow}>
                   <MetaChip title={getSubjectLabel(selectedSubject) || "—"} tone="primary" />
                   <MetaChip title={resolvedSubjectCode || "—"} tone="code" />
@@ -685,15 +683,9 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
                 {isAnonymousSubject && (
                   <div style={anonInfoBox}>
-                    <div>
-                      <b>ExamId :</b> {examCtx?.examId || "—"}
-                    </div>
-                    <div>
-                      <b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}
-                    </div>
-                    <div>
-                      <b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}
-                    </div>
+                    <div><b>ExamId :</b> {examCtx?.examId || "—"}</div>
+                    <div><b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}</div>
+                    <div><b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}</div>
                   </div>
                 )}
               </div>
@@ -717,10 +709,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     <select
                       style={inputPill}
                       value={selectedClassId}
-                      onChange={(e) => {
-                        setSelectedClassId(e.target.value);
-                        setSelectedSubjectId("");
-                      }}
+                      onChange={(e) => { setSelectedClassId(e.target.value); setSelectedSubjectId(""); }}
                     >
                       <option value="">{loadingClasses ? "Chargement..." : "-- Sélectionner --"}</option>
                       {classes.map((c) => (
@@ -732,24 +721,14 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   </Field>
 
                   <Field label="Semestre">
-                    <select
-                      style={inputPill}
-                      value={semester}
-                      onChange={(e) => setSemester(e.target.value)}
-                      disabled={!selectedClass}
-                    >
+                    <select style={inputPill} value={semester} onChange={(e) => setSemester(e.target.value)} disabled={!selectedClass}>
                       <option value="S1">S1</option>
                       <option value="S2">S2</option>
                     </select>
                   </Field>
 
                   <Field label="Examen">
-                    <select
-                      style={inputPill}
-                      value={examType}
-                      onChange={(e) => setExamType(e.target.value)}
-                      disabled={!selectedClass}
-                    >
+                    <select style={inputPill} value={examType} onChange={(e) => setExamType(e.target.value)} disabled={!selectedClass}>
                       <option value="CC">CC</option>
                       <option value="SN">SN</option>
                       <option value="EXAMEN">EXAMEN</option>
@@ -757,12 +736,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   </Field>
 
                   <Field label="Session">
-                    <select
-                      style={inputPill}
-                      value={sessionType}
-                      onChange={(e) => setSessionType(e.target.value)}
-                      disabled={!selectedClass}
-                    >
+                    <select style={inputPill} value={sessionType} onChange={(e) => setSessionType(e.target.value)} disabled={!selectedClass}>
                       <option value="main">Principale</option>
                       <option value="rattrapage">Rattrapage</option>
                     </select>
@@ -787,16 +761,14 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     >
                       <option value="">
                         {!selectedClass
-                          ? "Choisir une classe d’abord"
+                          ? "Choisir une classe d'abord"
                           : loadingSubjects
                           ? "Chargement..."
                           : "-- Sélectionner --"}
                       </option>
-
                       {subjects.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {getSubjectLabel(s)}
-                          {s.isAnonymous ? " (ANONYME)" : ""}
+                          {getSubjectLabel(s)}{s.isAnonymous ? " (ANONYME)" : ""}
                         </option>
                       ))}
                     </select>
@@ -820,20 +792,41 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                       <span>Exporter</span>
                     </button>
 
-                    <button
-                      type="button"
-                      style={{
-                        ...headerStyles.lockBtn,
-                        opacity: sessionType === "main" && selectedSubjectId ? 1 : 0.6,
-                        cursor: sessionType === "main" && selectedSubjectId ? "pointer" : "not-allowed",
-                      }}
-                      onClick={handleLock}
-                      disabled={saving || !selectedSubjectId || sessionType !== "main" || !resolvedSubjectCode}
-                      title="Verrouiller les notes de la session principale"
-                    >
-                      <Lock size={16} />
-                      <span>Verrouiller</span>
-                    </button>
+                    {/* ✅ Bouton Verrouiller — visible si NON verrouillé */}
+                    {!locked && (
+                      <button
+                        type="button"
+                        style={{
+                          ...headerStyles.lockBtn,
+                          opacity: sessionType === "main" && selectedSubjectId ? 1 : 0.6,
+                          cursor: sessionType === "main" && selectedSubjectId ? "pointer" : "not-allowed",
+                        }}
+                        onClick={handleLock}
+                        disabled={saving || !selectedSubjectId || sessionType !== "main" || !resolvedSubjectCode}
+                        title="Verrouiller les notes de la session principale"
+                      >
+                        <Lock size={16} />
+                        <span>Verrouiller</span>
+                      </button>
+                    )}
+
+                    {/* ✅ Bouton Déverrouiller — visible uniquement si verrouillé */}
+                    {locked && sessionType === "main" && (
+                      <button
+                        type="button"
+                        style={{
+                          ...headerStyles.unlockBtn,
+                          opacity: selectedSubjectId ? 1 : 0.6,
+                          cursor: selectedSubjectId ? "pointer" : "not-allowed",
+                        }}
+                        onClick={handleUnlock}
+                        disabled={saving || !selectedSubjectId || !resolvedSubjectCode}
+                        title="Déverrouiller pour modifier les notes"
+                      >
+                        <LockOpen size={16} />
+                        <span>Déverrouiller</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -851,7 +844,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                     {semester} · {examTypeLabel(examType)} · {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
                   </p>
 
-                  {!selectedClassId && <p style={entryStyles.warn}>Choisissez d’abord une classe.</p>}
+                  {!selectedClassId && <p style={entryStyles.warn}>Choisissez d'abord une classe.</p>}
                   {selectedClassId && !selectedSubjectId && <p style={entryStyles.warn}>Choisissez la matière (ECUE).</p>}
 
                   {selectedClassId && selectedSubjectId && !resolvedSubjectCode && (
@@ -861,14 +854,23 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   )}
 
                   {selectedClassId && selectedSubjectId && locked && sessionType === "main" && (
-                    <p style={entryStyles.warn}>
-                      Cette feuille est verrouillée (session principale). Passez en <strong>Rattrapage</strong>.
+                    <p style={{ ...entryStyles.warn, ...styles.warnUnlock }}>
+                      🔒 Cette feuille est verrouillée.{" "}
+                      <button
+                        type="button"
+                        style={styles.inlineUnlockBtn}
+                        onClick={handleUnlock}
+                        disabled={saving}
+                      >
+                        Cliquez ici pour déverrouiller
+                      </button>
+                      {" "}ou passez en <strong>Rattrapage</strong>.
                     </p>
                   )}
 
                   {showAnonWarning && (
                     <p style={entryStyles.warn}>
-                      Mode ANONYME: aucun anonymat disponible. Va d’abord dans <b>Anonymats</b> → Générer anonymats.
+                      Mode ANONYME: aucun anonymat disponible. Va d'abord dans <b>Anonymats</b> → Générer anonymats.
                     </p>
                   )}
                 </div>
@@ -900,28 +902,20 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                           const val = notes[k] ?? "";
                           const mention = computeMention(val);
                           const status = computeStatus(val);
-
                           const isActiveRow = activeKey === k;
                           const isPrefilled = !!preFilled[k] && val !== "";
-
                           const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
 
                           return (
                             <tr key={k} style={isActiveRow ? stylesActiveRow : undefined}>
                               <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
-
                               <td style={{ ...tdAnon, ...tdBase }}>
                                 <span style={anonBadge}>{k}</span>
                               </td>
-
                               <td style={{ ...entryStyles.tdNote, ...tdBase }}>
                                 <input
-                                  type="number"
-                                  min={0}
-                                  max={scaleMax}
-                                  step="0.25"
-                                  value={val}
-                                  disabled={!canEdit}
+                                  type="number" min={0} max={scaleMax} step="0.25"
+                                  value={val} disabled={!canEdit}
                                   onChange={(e) => handleNoteChange(k, e.target.value)}
                                   onFocus={() => setActiveKey(k)}
                                   onBlur={() => setActiveKey("")}
@@ -933,7 +927,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                                   }}
                                 />
                               </td>
-
                               <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
                               <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
                             </tr>
@@ -966,7 +959,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                           const status = computeStatus(val);
                           const isActiveRow = activeKey === key;
                           const isPrefilled = !!preFilled[key] && val !== "";
-
                           const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
 
                           return (
@@ -974,15 +966,10 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                               <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
                               <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>{s.matricule || "—"}</td>
                               <td style={{ ...entryStyles.tdName, ...tdBase }}>{(s.fullName || "").toUpperCase()}</td>
-
                               <td style={{ ...entryStyles.tdNote, ...tdBase }}>
                                 <input
-                                  type="number"
-                                  min={0}
-                                  max={scaleMax}
-                                  step="0.25"
-                                  value={val}
-                                  disabled={!canEdit}
+                                  type="number" min={0} max={scaleMax} step="0.25"
+                                  value={val} disabled={!canEdit}
                                   onChange={(e) => handleNoteChange(key, e.target.value)}
                                   onFocus={() => setActiveKey(key)}
                                   onBlur={() => setActiveKey("")}
@@ -994,7 +981,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                                   }}
                                 />
                               </td>
-
                               <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
                               <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
                             </tr>
@@ -1016,11 +1002,8 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   style={entryStyles.btnPrimary}
                   onClick={handleSave}
                   disabled={
-                    saving ||
-                    !selectedClassId ||
-                    !selectedSubjectId ||
-                    !resolvedSubjectCode ||
-                    !canEdit ||
+                    saving || !selectedClassId || !selectedSubjectId ||
+                    !resolvedSubjectCode || !canEdit ||
                     (isAnonymousSubject && anonList.length === 0)
                   }
                 >
@@ -1046,7 +1029,6 @@ function Field({ label, children }) {
   );
 }
 
-// ✅ petite “pill” compacte
 function MetaChip({ title, tone = "default" }) {
   const base = chipBase;
   const skin =
@@ -1061,27 +1043,15 @@ function MetaChip({ title, tone = "default" }) {
 }
 
 const inputPill = {
-  height: 38,
-  borderRadius: 999,
-  border: "1px solid var(--border)",
-  padding: "0 0.9rem",
-  fontSize: ".85rem",
-  background: "var(--bg-input, #f9fafb)",
-  outline: "none",
-  minWidth: 0,
-  width: "100%",
-  boxSizing: "border-box",
+  height: 38, borderRadius: 999, border: "1px solid var(--border)",
+  padding: "0 0.9rem", fontSize: ".85rem", background: "var(--bg-input, #f9fafb)",
+  outline: "none", minWidth: 0, width: "100%", boxSizing: "border-box",
 };
 
-// ✅ CASE active (input)
 const stylesActiveInput = { background: "#F0FDFA", border: "1px solid #22C55E", boxShadow: "0 0 0 3px rgba(34, 197, 94, 0.18)" };
-// ✅ LIGNE active
 const stylesActiveRow = { background: "#F0FDFA" };
-// ✅ CELLULES actives
 const stylesActiveCell = { borderTop: "1px solid #22C55E", borderBottom: "1px solid #22C55E" };
-// ✅ prérempli
 const stylesPrefilledInput = { background: "#EFF6FF", border: "1px solid #3B82F6", boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.14)" };
-// ✅ disabled
 const stylesDisabledInput = { opacity: 0.5, cursor: "not-allowed" };
 
 /* ========================= Styles ========================= */
@@ -1092,6 +1062,13 @@ const styles = {
   right: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflow: "hidden", background: "#f5f6f8" },
   pageBody: { flex: 1, overflowY: "auto" },
   container: { maxWidth: "1600px", margin: "1.5rem auto", padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
+  // ✅ message verrouillé inline
+  warnUnlock: { background: "#FEF9C3", border: "1px solid #FDE047", borderRadius: 8, padding: "8px 12px", color: "#854D0E" },
+  inlineUnlockBtn: {
+    background: "none", border: "none", color: "#B45309",
+    fontWeight: 900, cursor: "pointer", textDecoration: "underline",
+    fontSize: "inherit", padding: 0,
+  },
 };
 
 const headerStyles = {
@@ -1102,10 +1079,7 @@ const headerStyles = {
   subtitle: { margin: "4px 0 0", fontSize: ".85rem", color: "var(--ip-gray)" },
   badge: { marginTop: 8, display: "inline-block", padding: "4px 10px", borderRadius: 999, fontSize: ".75rem", background: "#ECFEFF", color: "#0369A1", border: "1px solid #7DD3FC", width: "fit-content" },
   classInfo: { marginTop: 6, fontSize: ".8rem", color: "#4B5563" },
-
-  // ✅ NEW: zone chips
   metaRow: { marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-
   filtersRow: { display: "flex", gap: ".5rem", flexWrap: "wrap", width: "100%" },
   field: { display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 },
   label: { fontSize: ".75rem", fontWeight: 700, color: "var(--ip-gray)" },
@@ -1113,7 +1087,10 @@ const headerStyles = {
   configBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "white", fontSize: ".85rem", fontWeight: 700, cursor: "default", opacity: 0.7 },
   actionsRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   smallBtn: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "#fff", color: "#374151", fontSize: ".8rem", cursor: "default" },
+  // Verrouiller — vert
   lockBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "#fff", fontSize: ".85rem", fontWeight: 800 },
+  // ✅ Déverrouiller — orange ambre
+  unlockBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#F59E0B", color: "#fff", fontSize: ".85rem", fontWeight: 800 },
 };
 
 const entryStyles = {
@@ -1144,9 +1121,7 @@ const entryStyles = {
   btnPrimary: { borderRadius: 999, border: "none", background: "#00b89c", color: "#fff", padding: "0.55rem 1.2rem", fontSize: ".88rem", fontWeight: 900, cursor: "pointer" },
 };
 
-// ✅ Badge “ANONYME”
 const pillAnon = { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "#ECFDF5", border: "1px solid #A7F3D0", color: "#047857", fontSize: ".75rem", fontWeight: 900 };
-// ✅ Badge “NOMINATIF”
 const pillNom = { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8", fontSize: ".75rem", fontWeight: 900 };
 
 const anonInfoBox = { marginTop: 10, padding: 12, borderRadius: 14, border: "1px solid #E5E7EB", background: "#F9FAFB", fontSize: 13, lineHeight: "20px" };
@@ -1155,7 +1130,6 @@ const thAnon = { padding: "10px 12px", borderBottom: "1px solid #E5E7EB", textAl
 const tdAnon = { padding: "10px 12px", borderBottom: "1px solid #F3F4F6" };
 const anonBadge = { display: "inline-flex", alignItems: "center", padding: "4px 10px", borderRadius: 999, border: "1px solid #3B82F6", background: "#EFF6FF", color: "#1D4ED8", fontWeight: 900, fontSize: ".8rem" };
 
-/* ✅ chips (nouvelle entête) */
 const chipBase = { display: "inline-flex", alignItems: "center", height: 28, padding: "0 10px", borderRadius: 999, border: "1px solid #E5E7EB", background: "#fff", fontSize: ".78rem", fontWeight: 800, color: "#111827", whiteSpace: "nowrap" };
 const chipDefault = { background: "#fff", color: "#111827", border: "1px solid #E5E7EB" };
 const chipPrimary = { background: "#F9FAFB", color: "#111827", border: "1px solid #E5E7EB" };

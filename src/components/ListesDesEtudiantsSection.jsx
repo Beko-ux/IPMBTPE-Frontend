@@ -8,17 +8,24 @@ export default function ListesDesEtudiantsSection({
   onPrintCertificat,
   onPrintCarte,
   onEdit, // prêt si tu veux ajouter un crayon plus tard
+
+  // ✅ nouveaux props
+  loading = false,
+  error = "",
 }) {
-  const count = students.length;
+  const count = Array.isArray(students) ? students.length : 0;
+
+  // ✅ message dans l’entête : si loading, on évite d’afficher "0 résultat" comme si c’était fini
+  const headerSubtitle = loading
+    ? "Chargement..."
+    : `${count} résultat${count > 1 ? "s" : ""}`;
 
   return (
     <section style={sx.section}>
       <header style={sx.header}>
         <div>
           <h2 style={sx.title}>Liste des étudiants</h2>
-          <p style={sx.subtitle}>
-            {count} résultat{count > 1 ? "s" : ""}
-          </p>
+          <p style={sx.subtitle}>{headerSubtitle}</p>
         </div>
       </header>
 
@@ -34,86 +41,111 @@ export default function ListesDesEtudiantsSection({
               <th style={{ ...sx.th, textAlign: "right" }}>Actions</th>
             </tr>
           </thead>
+
           <tbody>
-            {students.map((s) => {
-              const filiere = getFiliereDisplay(s);
-              const promo = getPromoLabel(s.cycle, s.studyYear);
-              const isInscrit = !!s.registrationFeePaid;
+            {/* ✅ 1) Loading */}
+            {loading && (
+              <tr>
+                <td style={sx.infoRow} colSpan={6}>
+                  Chargement des étudiants...
+                </td>
+              </tr>
+            )}
 
-              return (
-                <tr key={s.id || s.matricule}>
-                  {/* Matricule */}
-                  <td style={sx.td}>
-                    {s.matricule ? (
-                      <span style={sx.cellMain}>{s.matricule}</span>
-                    ) : (
-                      <span style={sx.matriculePending}>
-                        <em>Non</em> généré
+            {/* ✅ 2) Error */}
+            {!loading && !!error && (
+              <tr>
+                <td style={sx.errorRow} colSpan={6}>
+                  {error}
+                </td>
+              </tr>
+            )}
+
+            {/* ✅ 3) Data rows */}
+            {!loading &&
+              !error &&
+              (students || []).map((s) => {
+                const filiere = getFiliereDisplay(s);
+                const promo = getPromoLabel(s.cycle, s.studyYear);
+                const isInscrit = !!s.registrationFeePaid;
+
+                return (
+                  <tr key={s.id || s.matricule}>
+                    {/* Matricule */}
+                    <td style={sx.td}>
+                      {s.matricule ? (
+                        <span style={sx.cellMain}>{s.matricule}</span>
+                      ) : (
+                        <span style={sx.matriculePending}>
+                          <em>Non</em> généré
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Nom & prénoms */}
+                    <td style={sx.td}>
+                      <div style={sx.cellMain}>
+                        {(s.lastName || "").toUpperCase()}
+                      </div>
+                      <div style={sx.cellSub}>{s.firstName || ""}</div>
+                    </td>
+
+                    {/* Filière */}
+                    <td style={sx.td}>
+                      <div style={sx.cellMain}>{filiere.short || "—"}</div>
+                      {filiere.long && (
+                        <div style={sx.cellSub}>{filiere.long}</div>
+                      )}
+                    </td>
+
+                    {/* Promotion */}
+                    <td style={sx.td}>
+                      <div style={sx.cellMain}>{promo || "—"}</div>
+                    </td>
+
+                    {/* Statut */}
+                    <td style={sx.td}>
+                      <span
+                        style={{
+                          ...sx.badge,
+                          ...(isInscrit ? sx.badgeOk : sx.badgeDanger),
+                        }}
+                      >
+                        {isInscrit ? "Inscrit" : "Non inscrit"}
                       </span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Nom & prénoms */}
-                  <td style={sx.td}>
-                    <div style={sx.cellMain}>
-                      {(s.lastName || "").toUpperCase()}
-                    </div>
-                    <div style={sx.cellSub}>{s.firstName || ""}</div>
-                  </td>
+                    {/* Actions */}
+                    <td style={{ ...sx.td, textAlign: "right" }}>
+                      <ActionIconButton
+                        title="Détail de l'étudiant"
+                        onClick={() => onShowDetail && onShowDetail(s)}
+                      >
+                        <Eye size={16} />
+                      </ActionIconButton>
 
-                  {/* Filière => abréviation + libellé complet */}
-                  <td style={sx.td}>
-                    <div style={sx.cellMain}>{filiere.short || "—"}</div>
-                    {filiere.long && <div style={sx.cellSub}>{filiere.long}</div>}
-                  </td>
+                      <ActionIconButton
+                        title="Certificat de scolarité"
+                        onClick={() =>
+                          onPrintCertificat && onPrintCertificat(s)
+                        }
+                      >
+                        <FileText size={16} />
+                      </ActionIconButton>
 
-                  {/* Promotion */}
-                  <td style={sx.td}>
-                    <div style={sx.cellMain}>{promo || "—"}</div>
-                  </td>
+                      <ActionIconButton
+                        title="Carte d'étudiant"
+                        onClick={() => onPrintCarte && onPrintCarte(s)}
+                      >
+                        <ImageIcon size={16} />
+                      </ActionIconButton>
+                    </td>
+                  </tr>
+                );
+              })}
 
-                  {/* Statut d'inscription */}
-                  <td style={sx.td}>
-                    <span
-                      style={{
-                        ...sx.badge,
-                        ...(isInscrit ? sx.badgeOk : sx.badgeDanger),
-                      }}
-                    >
-                      {isInscrit ? "Inscrit" : "Non inscrit"}
-                    </span>
-                  </td>
-
-                  {/* Actions */}
-                  <td style={{ ...sx.td, textAlign: "right" }}>
-                    <ActionIconButton
-                      title="Détail de l'étudiant"
-                      onClick={() => onShowDetail && onShowDetail(s)}
-                    >
-                      <Eye size={16} />
-                    </ActionIconButton>
-
-                    <ActionIconButton
-                      title="Certificat de scolarité"
-                      onClick={() =>
-                        onPrintCertificat && onPrintCertificat(s)
-                      }
-                    >
-                      <FileText size={16} />
-                    </ActionIconButton>
-
-                    <ActionIconButton
-                      title="Carte d'étudiant"
-                      onClick={() => onPrintCarte && onPrintCarte(s)}
-                    >
-                      <ImageIcon size={16} />
-                    </ActionIconButton>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {students.length === 0 && (
+            {/* ✅ 4) Empty state (uniquement quand fini) */}
+            {!loading && !error && count === 0 && (
               <tr>
                 <td style={sx.emptyRow} colSpan={6}>
                   Aucun étudiant trouvé.
@@ -127,7 +159,7 @@ export default function ListesDesEtudiantsSection({
   );
 }
 
-/* --------- Bouton d'action (hover #FF8200 + icône blanche) --------- */
+/* --------- Bouton d'action --------- */
 
 function ActionIconButton({ title, children, onClick }) {
   const [hover, setHover] = useState(false);
@@ -148,16 +180,9 @@ function ActionIconButton({ title, children, onClick }) {
 
 /* -------- Helpers -------- */
 
-/**
- * Retourne { short, long } pour la colonne "Filière"
- * - gère les anciens enregistrements (filiereShort / filiereLong)
- * - gère les nouveaux (specialiteCode / specialite / optionCode / option)
- * - pour "Filières industrielles" on privilégie les options (BAT, TRP, …)
- */
 function getFiliereDisplay(s) {
   const filiere = s.filiere || "";
 
-  // 1) Nouveaux champs
   const isIndus = filiere === "Filières industrielles";
 
   const shortNew = isIndus
@@ -175,7 +200,6 @@ function getFiliereDisplay(s) {
     };
   }
 
-  // 2) Anciens champs importés
   if (s.filiereShort || s.filiereLong) {
     return {
       short: s.filiereShort || "—",
@@ -183,32 +207,25 @@ function getFiliereDisplay(s) {
     };
   }
 
-  // 3) Dernier recours
   return {
     short: "—",
     long: filiere,
   };
 }
 
-/**
- * Transforme (cycle, studyYear) en BTS1, L3, M1, ING4, etc.
- */
 function getPromoLabel(cycle, studyYear) {
   if (!cycle || !studyYear) return "";
-
   const y = Number(studyYear);
 
   switch (cycle) {
     case "BTS":
-      return `BTS${y}`; // BTS1, BTS2
+      return `BTS${y}`;
     case "LICENCE":
-      // LICENCE = 3ᵉ année
       return "L3";
     case "MASTER":
-      // 4ᵉ année → M1, 5ᵉ → M2
       return y === 4 ? "M1" : "M2";
     case "INGÉNIEUR":
-      return `ING${y}`; // ING1 … ING5
+      return `ING${y}`;
     default:
       return "";
   }
@@ -237,16 +254,8 @@ const sx = {
     fontSize: ".85rem",
     color: "var(--ip-gray)",
   },
-
-  tableWrap: {
-    marginTop: 8,
-    overflowX: "auto",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: ".9rem",
-  },
+  tableWrap: { marginTop: 8, overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: ".9rem" },
   th: {
     textAlign: "left",
     padding: "0.55rem 0.75rem",
@@ -262,21 +271,9 @@ const sx = {
     verticalAlign: "top",
     fontSize: ".9rem",
   },
-  cellMain: {
-    fontWeight: 600,
-    fontSize: ".9rem",
-  },
-  cellSub: {
-    marginTop: 2,
-    fontSize: ".8rem",
-    color: "var(--ip-gray)",
-  },
-
-  matriculePending: {
-    fontSize: ".8rem",
-    fontStyle: "italic",
-    color: "var(--ip-gray)",
-  },
+  cellMain: { fontWeight: 600, fontSize: ".9rem" },
+  cellSub: { marginTop: 2, fontSize: ".8rem", color: "var(--ip-gray)" },
+  matriculePending: { fontSize: ".8rem", fontStyle: "italic", color: "var(--ip-gray)" },
 
   badge: {
     display: "inline-flex",
@@ -287,14 +284,8 @@ const sx = {
     fontSize: ".75rem",
     fontWeight: 600,
   },
-  badgeOk: {
-    background: "rgba(0, 160, 130, .12)",
-    color: "var(--ip-teal)",
-  },
-  badgeDanger: {
-    background: "rgba(220, 53, 69, .12)",
-    color: "#d0162c",
-  },
+  badgeOk: { background: "rgba(0, 160, 130, .12)", color: "var(--ip-teal)" },
+  badgeDanger: { background: "rgba(220, 53, 69, .12)", color: "#d0162c" },
 
   iconBtn: {
     background: "transparent",
@@ -322,6 +313,20 @@ const sx = {
     padding: "1rem",
     textAlign: "center",
     color: "var(--ip-gray)",
+    fontSize: ".9rem",
+  },
+
+  // ✅ Nouveaux styles "info" / "error" (même look que emptyRow)
+  infoRow: {
+    padding: "1rem",
+    textAlign: "center",
+    color: "var(--ip-gray)",
+    fontSize: ".9rem",
+  },
+  errorRow: {
+    padding: "1rem",
+    textAlign: "center",
+    color: "#b00020",
     fontSize: ".9rem",
   },
 };

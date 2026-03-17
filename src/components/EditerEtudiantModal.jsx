@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Calendar } from "lucide-react";
 
-/* ————— Dictionnaires (copiés de InscrireEtudiantModal) ————— */
+/* ————— Dictionnaires ————— */
 const DICT = {
   "Filières de gestion": {
     type: "gestion",
@@ -131,7 +131,14 @@ const CM_REGIONS = {
     "Noun",
   ],
   Sud: ["Dja-et-Lobo", "Mvila", "Océan", "Vallée-du-Ntem"],
-  "Sud-Ouest": ["Fako", "Koupé-Manengouba", "Lebialem", "Manyu", "Meme", "Ndian"],
+  "Sud-Ouest": [
+    "Fako",
+    "Koupé-Manengouba",
+    "Lebialem",
+    "Manyu",
+    "Meme",
+    "Ndian",
+  ],
 };
 
 /* ————— Diplômes possibles selon le cycle ————— */
@@ -173,7 +180,7 @@ const CYCLE_RULES = {
 };
 
 /* =========================================================
-   ✅ Helper: reconstruire specialite/option depuis les codes
+   Helper: reconstruire specialite/option depuis les codes
    ========================================================= */
 function hydrateSchoolChoicesFromStudent(student) {
   const filiere = student?.filiere || "";
@@ -189,25 +196,21 @@ function hydrateSchoolChoicesFromStudent(student) {
   }
 
   if (conf.type === "gestion" || conf.type === "juridique") {
-    // si label manquant mais code présent -> retrouver label
     if (!specialite && specialiteCode) {
       const found = conf.specialites.find(([, c]) => c === specialiteCode);
       if (found) specialite = found[0];
     }
 
-    // si label présent mais code manquant -> retrouver code
     if (specialite && !specialiteCode) {
       const found = conf.specialites.find(([label]) => label === specialite);
       if (found) specialiteCode = found[1] || "";
     }
 
-    // non indus => pas d'option
     option = "";
     optionCode = "";
   }
 
   if (conf.type === "industriel") {
-    // (A) Si specialite / option labels manquants mais optionCode existe
     if ((!specialite || !option) && optionCode) {
       for (const [specName, optList] of Object.entries(
         conf.optionsBySpecialite || {}
@@ -221,14 +224,12 @@ function hydrateSchoolChoicesFromStudent(student) {
       }
     }
 
-    // (B) Si specialite connue mais option manquante et optionCode existe
     if (specialite && !option && optionCode) {
       const optList = conf.optionsBySpecialite[specialite] || [];
       const foundOpt = optList.find(([, c]) => c === optionCode);
       if (foundOpt) option = foundOpt[0];
     }
 
-    // (C) Si option label présent mais code manquant
     if (specialite && option && !optionCode) {
       const optList = conf.optionsBySpecialite[specialite] || [];
       const foundOpt = optList.find(([label]) => label === option);
@@ -239,7 +240,12 @@ function hydrateSchoolChoicesFromStudent(student) {
   return { filiere, specialite, specialiteCode, option, optionCode };
 }
 
-export default function EditerEtudiantModal({ open, student, onClose, onSave }) {
+export default function EditerEtudiantModal({
+  open,
+  student,
+  onClose,
+  onSave,
+}) {
   const [form, setForm] = useState({
     lastName: "",
     firstName: "",
@@ -257,11 +263,8 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     classRole: "Aucune",
     schoolRole: "Aucune",
     registrationFeePaid: false,
-
-    // ✅ AJOUT: photoUrl (base64 / dataURL)
     photoUrl: "",
 
-    // Fiche inscription
     livingLanguage: "",
     bacSerie: "",
     birthPlace: "",
@@ -286,19 +289,15 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
   const [errors, setErrors] = useState({});
   const AY_LIST = useMemo(buildAcademicYears, []);
 
-  // 🔒 refs pour éviter reset au pré-remplissage
   const prevFiliereRef = useRef(null);
   const prevSpecialiteRef = useRef(null);
 
-  // Pré-remplissage quand on ouvre la modale
   useEffect(() => {
     if (!open || !student) return;
 
-    // ✅ Très important : on reset les refs ici
     prevFiliereRef.current = null;
     prevSpecialiteRef.current = null;
 
-    // ✅ Hydratation des choix filière/spécialité/option depuis codes
     const hydrated = hydrateSchoolChoicesFromStudent(student);
 
     setForm({
@@ -320,9 +319,8 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
       classRole: student.classRole || "Aucune",
       schoolRole: student.schoolRole || "Aucune",
       registrationFeePaid: !!student.registrationFeePaid,
-
-      // ✅ AJOUT
-      photoUrl: student.photoUrl || "",
+      photoUrl:
+  typeof payload.photoPreview !== "undefined" ? payload.photoPreview : null,
 
       livingLanguage: student.livingLanguage || "",
       bacSerie: student.bacSerie || "",
@@ -344,6 +342,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
       lastDiplomaYear: student.lastDiplomaYear || "",
       diplomaPresented: student.diplomaPresented || "",
     });
+
     setErrors({});
   }, [open, student, AY_LIST]);
 
@@ -353,6 +352,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     () => (form.filiere ? DICT[form.filiere] : null),
     [form.filiere]
   );
+
   const isIndus = currentConf?.type === "industriel";
   const specialites = currentConf?.specialites || [];
   const options =
@@ -367,7 +367,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
 
   const diplomaList = DIPLOMA_OPTIONS[form.cycle] || [];
 
-  // ✅ Fix : reset spécialité/option SEULEMENT si l’utilisateur change filière
   useEffect(() => {
     if (
       prevFiliereRef.current !== null &&
@@ -384,7 +383,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     prevFiliereRef.current = form.filiere;
   }, [form.filiere]);
 
-  // ✅ Fix : reset option SEULEMENT si l’utilisateur change spécialité indus
   useEffect(() => {
     if (!isIndus) {
       prevSpecialiteRef.current = form.specialite;
@@ -405,7 +403,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     prevSpecialiteRef.current = form.specialite;
   }, [form.specialite, isIndus]);
 
-  // Quand la région change, on vide le département si plus valide
   useEffect(() => {
     if (!form.regionOrigine) {
       setField("departementOrigine", "");
@@ -415,23 +412,19 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     if (!allowed.includes(form.departementOrigine)) {
       setField("departementOrigine", "");
     }
-  }, [form.regionOrigine]); // eslint-disable-line
+  }, [form.regionOrigine]);
 
   if (!open || !student) return null;
 
-  /* ————— Téléphone CM (+237 6XXXXXXXX) ————— */
   const onPhoneChange = (e) => {
     let v = e.target.value.replace(/[^\d+ ]/g, "");
-    if (!v.startsWith("+237 6"))
+    if (!v.startsWith("+237 6")) {
       v = "+237 6" + v.replace(/^\+?237?\s?6?/, "");
-    const tail = v
-      .replace("+237 6", "")
-      .replace(/\D/g, "")
-      .slice(0, 8);
+    }
+    const tail = v.replace("+237 6", "").replace(/\D/g, "").slice(0, 8);
     setField("contact", `+237 6${tail}`);
   };
 
-  /* ————— ✅ Upload photo => dataURL base64 ————— */
   const onPhotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -440,6 +433,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
       alert("Veuillez sélectionner une image.");
       return;
     }
+
     if (file.size > 2 * 1024 * 1024) {
       alert("Image trop lourde (max 2MB).");
       return;
@@ -452,11 +446,11 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     reader.readAsDataURL(file);
   };
 
-  /* ————— Spécialité / Option codes ————— */
   const onSelectSpecialite = (value) => {
     let code = "";
     const entry = specialites.find(([label]) => label === value);
     if (entry) code = entry[1] || "";
+
     setForm((f) => ({
       ...f,
       specialite: value,
@@ -468,6 +462,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     let code = "";
     const entry = options.find(([label]) => label === value);
     if (entry) code = entry[1] || "";
+
     setForm((f) => ({
       ...f,
       option: value,
@@ -475,14 +470,13 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     }));
   };
 
-  /* ————— Cycle / Année ————— */
   const allowedYears = form.cycle ? CYCLE_RULES[form.cycle] : [];
+
   const pickYear = (y) => {
     if (!allowedYears.includes(y)) return;
     setField("studyYear", y === form.studyYear ? null : y);
   };
 
-  /* ————— Validation ————— */
   const validate = () => {
     const err = {};
     if (!form.lastName.trim()) err.lastName = "Champ obligatoire";
@@ -504,7 +498,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
     const contact = tail.length === 0 ? "" : form.contact;
 
     onSave?.({
-      id: student.id, // important pour le backend
+      id: student.id,
       ...form,
       contact,
     });
@@ -535,7 +529,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
   return (
     <div style={sx.overlay} onMouseDown={onClose}>
       <div style={sx.modal} onMouseDown={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div style={sx.head}>
           <div>
             <h3 style={sx.title}>Modifier les informations de l’étudiant</h3>
@@ -545,9 +538,9 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
           </div>
         </div>
 
-        {/* Contenu */}
         <div style={sx.content}>
           <div style={sx.sectionTitle}>Identité & scolarité</div>
+
           <div style={sx.grid}>
             <div style={sx.field}>
               <label style={sx.label}>Nom *</label>
@@ -616,7 +609,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               </small>
             </div>
 
-            {/* ✅ PHOTO */}
             <div style={sx.field}>
               <label style={sx.label}>Photo de l’étudiant</label>
               <div style={sx.photoRow}>
@@ -631,6 +623,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                     <div style={sx.photoPlaceholder}>Aucune photo</div>
                   )}
                 </div>
+
                 <div style={sx.photoActions}>
                   <input type="file" accept="image/*" onChange={onPhotoChange} />
                   {form.photoUrl && (
@@ -661,9 +654,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                 <option>Filières de gestion</option>
                 <option>Filières carrières juridiques</option>
               </select>
-              {errors.filiere && (
-                <small style={sx.err}>{errors.filiere}</small>
-              )}
+              {errors.filiere && <small style={sx.err}>{errors.filiere}</small>}
             </div>
 
             <div style={sx.field}>
@@ -679,11 +670,13 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                   <option key={label}>{label}</option>
                 ))}
               </select>
+
               {!isIndus && form.specialite && form.specialiteCode && (
                 <small style={sx.hint}>
                   Abréviation : <b>{form.specialiteCode}</b>
                 </small>
               )}
+
               {errors.specialite && (
                 <small style={sx.err}>{errors.specialite}</small>
               )}
@@ -703,6 +696,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                     <option key={label}>{label}</option>
                   ))}
                 </select>
+
                 {form.option && form.optionCode && (
                   <small style={sx.hint}>
                     Abréviation : <b>{form.optionCode}</b>
@@ -740,6 +734,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                 {[1, 2, 3, 4, 5].map((y) => {
                   const enabled = allowedYears.includes(y);
                   const active = form.studyYear === y;
+
                   return (
                     <button
                       key={y}
@@ -786,7 +781,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               />
             </div>
 
-            {/* Paiement des frais d’inscription */}
             <div style={sx.field}>
               <label style={sx.label}>Paiement des frais d’inscription</label>
               <select
@@ -846,11 +840,10 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
             </div>
           </div>
 
-          {/* Bloc informations personnelles */}
           <div style={sx.sectionSeparator} />
           <div style={sx.sectionTitle}>Informations personnelles</div>
+
           <div style={sx.grid}>
-            {/* ... le reste inchangé ... */}
             <div style={sx.field}>
               <label style={sx.label}>Langue vivante</label>
               <select
@@ -888,9 +881,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               <input
                 style={inputStyle(false)}
                 value={form.quartierHabitation}
-                onChange={(e) =>
-                  setField("quartierHabitation", e.target.value)
-                }
+                onChange={(e) => setField("quartierHabitation", e.target.value)}
               />
             </div>
 
@@ -899,9 +890,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               <select
                 style={inputStyle(false)}
                 value={form.regionOrigine}
-                onChange={(e) =>
-                  setField("regionOrigine", e.target.value || "")
-                }
+                onChange={(e) => setField("regionOrigine", e.target.value || "")}
               >
                 <option value="">Sélectionner une région</option>
                 {regionList.map((r) => (
@@ -1015,6 +1004,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
           <div style={sx.sectionTitle}>
             Informations du tuteur / personne ressource
           </div>
+
           <div style={sx.grid}>
             <div style={sx.field}>
               <label style={sx.label}>
@@ -1032,9 +1022,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               <input
                 style={inputStyle(false)}
                 value={form.emergencyAddress}
-                onChange={(e) =>
-                  setField("emergencyAddress", e.target.value)
-                }
+                onChange={(e) => setField("emergencyAddress", e.target.value)}
               />
             </div>
 
@@ -1063,9 +1051,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
               <select
                 style={inputStyle(false)}
                 value={form.emergencyRelation}
-                onChange={(e) =>
-                  setField("emergencyRelation", e.target.value)
-                }
+                onChange={(e) => setField("emergencyRelation", e.target.value)}
               >
                 <option value="">Sélectionner</option>
                 <option value="Père">Père</option>
@@ -1081,6 +1067,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
 
           <div style={sx.sectionSeparator} />
           <div style={sx.sectionTitle}>Dernier établissement & diplôme</div>
+
           <div style={sx.grid}>
             <div style={sx.field}>
               <label style={sx.label}>Dernier établissement fréquenté</label>
@@ -1111,9 +1098,7 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
                 style={inputStyle(false)}
                 value={form.diplomaPresented}
                 disabled={!form.cycle}
-                onChange={(e) =>
-                  setField("diplomaPresented", e.target.value)
-                }
+                onChange={(e) => setField("diplomaPresented", e.target.value)}
               >
                 <option value="">
                   {form.cycle
@@ -1134,7 +1119,6 @@ export default function EditerEtudiantModal({ open, student, onClose, onSave }) 
           </div>
         </div>
 
-        {/* Footer */}
         <div style={sx.actions}>
           <button type="button" onClick={onClose} style={sx.btnGhost}>
             Annuler
@@ -1248,7 +1232,6 @@ const sx = {
   },
   err: { marginTop: 4, fontSize: ".75rem", color: "var(--danger)" },
 
-  // ✅ styles photo
   photoRow: {
     display: "flex",
     gap: 12,
