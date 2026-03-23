@@ -865,7 +865,7 @@ function ClassCard({ cls }) {
       <header style={sx.classHeader}>
         <div>
           <p style={sx.classTitle}>{cls.title}</p>
-          <p style={sx.classSubtitle}>Effectif : {cls.effectif} étudiant(s)</p>
+          <p style={sx.classSubtitle}>Effectif : {cls.effectif ?? (cls.students?.length ?? 0)} étudiant(s)</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={sx.classCodeBox}>{cls.abbrev || "—"}</div>

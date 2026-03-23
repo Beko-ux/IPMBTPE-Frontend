@@ -1,6 +1,10 @@
 // src/App.jsx
-import { useEffect, useState } from "react";
+// ✅ Étape 2 — App.jsx refonte
+// - La navigation et l'année académique sont centralisées dans useAppStore
+// - Plus de useState local pour section / year
+// - Chaque page reçoit { academicYear } depuis le store (pas en prop)
 
+import useAppStore from "./store/useAppStore";
 import EtudiantsPage from "./pages/EtudiantsPage";
 import ClassesPage from "./pages/ClassesPage";
 import DocumentsPage from "./pages/DocumentsPage";
@@ -10,78 +14,63 @@ import MatieresPage from "./pages/MatieresPage";
 import EnvoyerPage from "./pages/EnvoyerPage";
 import ModulesPage from "./pages/ModulesPage";
 import ScolaritePage from "./pages/ScolaritePage";
-
 import AnonymatsPage from "./pages/AnonymatsPage";
 import AnonymatsSessionPage from "./pages/AnonymatsSessionPage";
-
 import PresencesExamensPage from "./pages/PresencesExamensPage";
-
 import "./styles/tokens.css";
 
-const STORAGE_KEY = "ipmbtpe:last_section";
-
 export default function App() {
-  const [section, setSection] = useState(() => {
-    return localStorage.getItem(STORAGE_KEY) || "dashboard";
-  });
+  // ✅ section et setSection viennent du store global
+  const { section, setSection, academicYear } = useAppStore();
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, section);
-  }, [section]);
+  // Props communes à toutes les pages
+  const commonProps = {
+    onNavigate: setSection,
+    academicYear, // ← injecté depuis le store dans toutes les pages
+  };
 
   switch (section) {
     case "etudiants":
-      return <EtudiantsPage currentSection="etudiants" onNavigate={setSection} />;
+      return <EtudiantsPage currentSection="etudiants" {...commonProps} />;
 
     case "classes":
-      return <ClassesPage currentSection="classes" onNavigate={setSection} />;
+      return <ClassesPage currentSection="classes" {...commonProps} />;
 
     case "documents":
-      return <DocumentsPage currentSection="documents" onNavigate={setSection} />;
+      return <DocumentsPage currentSection="documents" {...commonProps} />;
 
-    /** ✅ Notes déplacé dans "Évaluations" dans ta sidebar, mais la clé reste "notes" */
     case "notes":
-      return <NotesPage currentSection="notes" onNavigate={setSection} />;
+      return <NotesPage currentSection="notes" {...commonProps} />;
 
-    /** ✅ NOUVEAU : Liste de présence => PresencesExamensPage */
     case "liste_presence":
       return (
-        <PresencesExamensPage
-          currentSection="liste_presence"
-          onNavigate={setSection}
-        />
+        <PresencesExamensPage currentSection="liste_presence" {...commonProps} />
       );
 
     case "matieres":
-      return <MatieresPage currentSection="matieres" onNavigate={setSection} />;
+      return <MatieresPage currentSection="matieres" {...commonProps} />;
 
     case "modules":
-      return <ModulesPage currentSection="modules" onNavigate={setSection} />;
+      return <ModulesPage currentSection="modules" {...commonProps} />;
 
     case "envoyer":
-      return <EnvoyerPage currentSection="envoyer" onNavigate={setSection} />;
+      return <EnvoyerPage currentSection="envoyer" {...commonProps} />;
 
     case "scolarite":
-      return <ScolaritePage currentSection="scolarite" onNavigate={setSection} />;
+      return <ScolaritePage currentSection="scolarite" {...commonProps} />;
 
     case "evaluations":
       return (
-        <AnonymatsSessionPage
-          currentSection="evaluations"
-          onNavigate={setSection}
-        />
+        <AnonymatsSessionPage currentSection="evaluations" {...commonProps} />
       );
 
     case "anonymats":
-      return <AnonymatsPage currentSection="anonymats" onNavigate={setSection} />;
+      return <AnonymatsPage currentSection="anonymats" {...commonProps} />;
 
     case "dashboard":
     default:
       return (
-        <TableauDeBordPage
-          currentSection="dashboard"
-          onNavigate={setSection}
-        />
+        <TableauDeBordPage currentSection="dashboard" {...commonProps} />
       );
   }
 }

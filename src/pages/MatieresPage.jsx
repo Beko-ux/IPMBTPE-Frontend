@@ -1,1778 +1,1389 @@
 // src/pages/MatieresPage.jsx
-import { useEffect, useMemo, useRef, useState } from "react";
+// ✅ v2 — Améliorations UX :
+//   - Suppression du bouton Menu dans la topbar
+//   - Toggle d'activation bien visible (bouton vert/gris clair)
+//   - Onglets : Catalogue (toutes) / Activées / Non activées
+//   - Report de semestre : déplacer un cours prévu S1 → S3 (BTS1→BTS2 par ex.)
+//   - Édition inline avec tous les semestres du cycle (pas juste l'année courante)
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BookOpen, Plus, Search, ChevronDown, ChevronRight,
+  Edit3, RotateCcw, AlertCircle, Check, X, Layers,
+  Zap, Package, Sparkles, CheckCircle2, Circle, MoveRight
+} from "lucide-react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { BookOpen, Plus, Edit, Trash2, Hash } from "lucide-react";
-import { colors } from "../styles/theme";
+import useAppStore from "../store/useAppStore.js";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const cleanStr = (x) => (x ?? "").toString().trim();
 
-/* ───────── Dictionnaires ───────── */
-const DICT = {
-  "Filières de gestion": {
-    type: "gestion",
-    specialites: [
-      ["Comptabilité et Gestion des Entreprises", "CGE"],
-      ["Administration des Collectivités Territoriales", "ACT"],
-      ["Gestion des ONG", "ONG"],
-      ["Gestion de Projets", "GPR"],
-      ["Gestion des Ressources Humaines", "GRH"],
-      ["Assistant Manager", "AMA"],
-      ["Banque et Finance", "BAF"],
-      ["Marketing – Commerce – Vente", "MCV"],
-      ["Commerce International", "CIN"],
-      ["Gestion Logistique et Transport", "GLT"],
-      ["Statistiques", "STA"],
-      ["Douane et Transit", "DTR"],
-      ["Comptabilité – Contrôle – Audit", "CCA"],
-      ["Finance – Comptabilité", "FIC"],
-      ["Banque – Finance et Assurance", "BFA"],
-      ["Marketing et Communication Digitale", "MCD"],
-      ["Marketing – Management Opérationnel", "MMO"],
-      ["Management des Organisations", "MOR"],
-      ["Management de la Qualité", "MAQ"],
-      ["Management des Projets", "MPR"],
-    ],
-  },
-  "Filières carrières juridiques": {
-    type: "juridique",
-    specialites: [
-      ["Droit Foncier et Domanial", "DFD"],
-      ["Professions Immobilières", "PRI"],
-      ["Douane et Transit", "DTR"],
-      ["Droit des Affaires et de l’Entreprise", "DAE"],
-    ],
-  },
-  "Filières industrielles": {
-    type: "industriel",
-    specialites: [
-      ["Génie Civil", ""],
-      ["Génie Informatique", ""],
-      ["Télécommunication", ""],
-      ["Génie Mécanique", ""],
-      ["Génie Thermique", ""],
-      ["Génie Électrique", ""],
-    ],
-    optionsBySpecialite: {
-      "Génie Civil": [
-        ["Bâtiment", "BAT"],
-        ["Travaux Publics", "TPU"],
-        ["Géomètre Topographe", "GTP"],
-        ["Installation Sanitaire", "INS"],
-      ],
-      "Génie Informatique": [
-        ["Génie Logiciel", "GLI"],
-        ["E-Commerce et Marketing Numérique", "ECM"],
-        ["Gestion des Systèmes Informatiques", "GSI"],
-        ["Informatique Industrielle et Automatisme", "IIA"],
-      ],
-      Télécommunication: [
-        ["Télécommunication", "TEL"],
-        ["Réseau et Sécurité", "RES"],
-      ],
-      "Génie Mécanique": [
-        ["Chaudronnerie et Soudure", "CHS"],
-        ["Fabrication Mécanique", "FBM"],
-        ["Mécatronique", "MEC"],
-        ["Maintenance Systèmes Industriels", "MSI"],
-        ["Électromécanique", "ELM"],
-      ],
-      "Génie Thermique": [
-        ["Énergies Renouvelables", "ENR"],
-        ["Froid et Climatisation", "FRC"],
-      ],
-      "Génie Électrique": [
-        ["Maintenance Appareils Biomédicaux", "MAB"],
-        ["Électrotechnique", "ELT"],
-      ],
-    },
-  },
-};
-
-const CYCLE_RULES = {
-  BTS: [1, 2],
-  LICENCE: [3],
-  MASTER: [4, 5],
-  "INGÉNIEUR": [1, 2, 3, 4, 5],
-};
-
-/* ───────── Helpers ───────── */
-function cleanStr(x) {
-  return (x ?? "").toString().trim();
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(`${API}${path}`, {
+    headers: { "Content-Type": "application/json" }, ...opts,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
 }
 
-function normalizeKey(str) {
-  return cleanStr(str)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-/**
- * ✅ IMPORTANT:
- * Reconstruit TOUJOURS label/name à partir des "parts" (baseLabel + semestre).
- * => empêche la disparition du nom ECUE lors d'un update crédits/codes.
- */
-function computeLabelFromParts({ semesterMode, baseLabel, labelS1, labelS2 }) {
-  const mode = cleanStr(semesterMode || "S1");
-  const base = cleanStr(baseLabel);
-
-  // fallback ultime : si base vide, on tente labelS1/labelS2
-  if (!base) {
-    if (mode === "S1S2") {
-      const a = cleanStr(labelS1);
-      const b = cleanStr(labelS2);
-      return a || b || "";
-    }
-    const a = cleanStr(labelS1);
-    const b = cleanStr(labelS2);
-    return a || b || "";
+/* ─── Tous les semestres d'un cycle (pour le report) ─── */
+function getAllSemestersForCycle(cycle) {
+  switch (cycle) {
+    case "BTS":
+      return [
+        { value: "S1", label: "S1 — BTS Année 1" },
+        { value: "S2", label: "S2 — BTS Année 1" },
+        { value: "S3", label: "S3 — BTS Année 2" },
+        { value: "S4", label: "S4 — BTS Année 2" },
+      ];
+    case "LICENCE":
+      return [
+        { value: "S5", label: "S5 — Licence Année 3" },
+        { value: "S6", label: "S6 — Licence Année 3" },
+      ];
+    case "MASTER":
+      return [
+        { value: "S7", label: "S7 — Master Année 4 (M1)" },
+        { value: "S8", label: "S8 — Master Année 4 (M1)" },
+        { value: "S9", label: "S9 — Master Année 5 (M2)" },
+        { value: "S10", label: "S10 — Master Année 5 (M2)" },
+      ];
+    case "INGÉNIEUR":
+      return [1, 2, 3, 4, 5].flatMap(y => [
+        { value: `S${(y - 1) * 2 + 1}`, label: `S${(y - 1) * 2 + 1} — Ingénieur Année ${y}` },
+        { value: `S${(y - 1) * 2 + 2}`, label: `S${(y - 1) * 2 + 2} — Ingénieur Année ${y}` },
+      ]);
+    default:
+      return [
+        { value: "S1", label: "S1" }, { value: "S2", label: "S2" },
+        { value: "S3", label: "S3" }, { value: "S4", label: "S4" },
+      ];
   }
-
-  // En mode S1S2, on affiche la base (ou tu peux décider d'afficher "base (S1/S2)")
-  if (mode === "S1S2") return base;
-
-  // mode S2 -> si labelS2 existe, priorité
-  if (mode === "S2") return cleanStr(labelS2) || base;
-
-  // mode S1 (par défaut)
-  return cleanStr(labelS1) || base;
 }
 
-function displayLabelFor(s) {
-  // on reconstruit à partir de nos champs normalisés
-  const semesterMode = cleanStr(s?.semesterMode || s?.semester || "S1");
-  const baseLabel = cleanStr(s?.baseLabel || s?.label || s?.name || "");
-  const labelS1 = cleanStr(s?.labelS1 || "");
-  const labelS2 = cleanStr(s?.labelS2 || "");
-  const result = computeLabelFromParts({ semesterMode, baseLabel, labelS1, labelS2 });
-  return result || "—";
+/* Semestres "normaux" pour l'année d'étude */
+function getYearSemesters(cycle, studyYear) {
+  const y = Number(studyYear) || 1;
+  let base = (y - 1) * 2;
+  if (cycle === "LICENCE") base = 4;
+  else if (cycle === "MASTER") base = y === 4 ? 6 : 8;
+  return [`S${base + 1}`, `S${base + 2}`];
 }
 
-/* ─────────────────────────── Page ─────────────────────────── */
-export default function MatieresPage({ currentSection = "matieres", onNavigate }) {
-  const [subjects, setSubjects] = useState([]);
-  const [loading, setLoading] = useState(false);
+function semMatchesFilter(subjectSem, filter) {
+  if (!filter) return true;
+  if (filter === subjectSem) return true;
+  if (subjectSem === "S1S2") return true;
+  return false;
+}
 
-  // ✅ Catalogue legacy (subjects_catalog)
-  const [catalog, setCatalog] = useState([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [openCatalogModal, setOpenCatalogModal] = useState(false);
+/* ════════════════════════════════════════════════════════
+   PAGE PRINCIPALE
+════════════════════════════════════════════════════════ */
+export default function MatieresPage({ currentSection, onNavigate }) {
+  const { academicYear } = useAppStore?.() ?? { academicYear: "2025-2026" };
 
-  // ✅ CRUD matière
-  const [openModal, setOpenModal] = useState(false);
-  const [editing, setEditing] = useState(null);
+  const [classes, setClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [selectedClassId, setSelectedClassId] = useState("");
+  const [catalogSubjects, setCatalogSubjects] = useState([]);
+  const [classSubjects, setClassSubjects] = useState([]);
+  const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [semFilter, setSemFilter] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+  // "all" = catalogue complet | "active" = activées | "inactive" = non activées
+  const [viewTab, setViewTab] = useState("all");
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState(new Set());
+  const [expandedFilieres, setExpandedFilieres] = useState(new Set());
+  // Activation multiple
+  const [selectedCodes, setSelectedCodes] = useState(new Set());
+  const [activatingMultiple, setActivatingMultiple] = useState(false);
 
-  // ✅ Gestion rapide codes & crédits
-  const [openBulkEdit, setOpenBulkEdit] = useState(false);
+  const selectedClass = useMemo(
+    () => classes.find((c) => c.id === selectedClassId) || null,
+    [classes, selectedClassId]
+  );
 
-  const loadSubjects = async () => {
-    setLoading(true);
+  const allCycleSemesters = useMemo(
+    () => selectedClass ? getAllSemestersForCycle(selectedClass.cycle) : [],
+    [selectedClass]
+  );
+
+  const yearSemesters = useMemo(
+    () => selectedClass ? getYearSemesters(selectedClass.cycle, selectedClass.studyYear) : [],
+    [selectedClass]
+  );
+
+  const showToast = useCallback((type, msg) => {
+    setToast({ type, msg });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  /* ── Chargement classes ── */
+  useEffect(() => {
+    setLoadingClasses(true);
+    setSelectedClassId("");
+    setClassSubjects([]);
+    setCatalogSubjects([]);
+    apiFetch(`/classes?year=${encodeURIComponent(academicYear)}`)
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        setClasses(list);
+        const filieres = new Set(list.map((c) => c.filiere || "Autre"));
+        setExpandedFilieres(filieres);
+      })
+      .catch(() => setClasses([]))
+      .finally(() => setLoadingClasses(false));
+  }, [academicYear]);
+
+  /* ── Chargement matières ── */
+  const loadSubjects = useCallback(async () => {
+    if (!selectedClassId || !selectedClass) return;
+    setLoadingSubjects(true);
     try {
-      const res = await fetch(`${API_BASE}/subjects`);
-      const data = await res.json().catch(() => []);
-      setSubjects(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Erreur chargement matières :", e);
-      setSubjects([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      const { filiere, specialiteCode, optionCode, cycle, studyYear } = selectedClass;
 
-  const loadCatalog = async () => {
-    setLoadingCatalog(true);
-    try {
-      const res = await fetch(`${API_BASE}/subjects/catalog`);
-      const data = await res.json().catch(() => []);
-      setCatalog(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Erreur chargement catalogue :", e);
-      setCatalog([]);
+      // ── Résolution du code de référence ──
+      // Pour les filières industrielles : optionCode = "BAT", "GSI", etc.
+      // Mais dans Firestore subjects, c'est stocké dans specialiteCode (optionCode=null)
+      // Pour gestion/juridique : c'est specialiteCode
+      const refCode = optionCode || specialiteCode || "";
+      const isIndustriel = filiere === "Filières industrielles";
+
+      const p = new URLSearchParams();
+      if (filiere) p.set("filiere", filiere);
+      // Pour industriel : le code est dans specialiteCode en Firestore
+      if (refCode) p.set("specialiteCode", refCode);
+      // Pour gestion/juridique : optionCode peut aussi exister
+      if (!isIndustriel && optionCode && optionCode !== specialiteCode) {
+        p.set("optionCode", optionCode);
+      }
+      if (cycle) p.set("cycle", cycle);
+      if (studyYear) p.set("studyYear", String(studyYear));
+
+      let catalog = await apiFetch(`/subjects?${p}`).catch(() => []);
+
+      // Fallback : si vide, chercher par filière + cycle + studyYear uniquement
+      // (cas subjects anciens sans specialiteCode bien renseigné)
+      if (Array.isArray(catalog) && catalog.filter(s => !s.isArchived).length === 0) {
+        const p2 = new URLSearchParams();
+        if (filiere) p2.set("filiere", filiere);
+        if (cycle) p2.set("cycle", cycle);
+        if (studyYear) p2.set("studyYear", String(studyYear));
+        const catalog2 = await apiFetch(`/subjects?${p2}`).catch(() => []);
+        if (Array.isArray(catalog2) && catalog2.length > 0) catalog = catalog2;
+      }
+
+      const cs = await apiFetch(
+        `/class-subjects?classId=${encodeURIComponent(selectedClassId)}&academicYear=${encodeURIComponent(academicYear)}`
+      ).catch(() => []);
+
+      setCatalogSubjects(Array.isArray(catalog) ? catalog.filter((s) => !s.isArchived) : []);
+      setClassSubjects(Array.isArray(cs) ? cs : []);
     } finally {
-      setLoadingCatalog(false);
+      setLoadingSubjects(false);
     }
-  };
+  }, [selectedClassId, selectedClass, academicYear]);
 
   useEffect(() => {
     loadSubjects();
-    loadCatalog();
-  }, []);
+    setSemFilter("");
+    setSearchQ("");
+    setEditingId(null);
+    setCollapsedGroups(new Set());
+    setViewTab("all");
+  }, [loadSubjects]);
 
-  // Map catalogue (label + year + cycle) -> code
-  const catalogMap = useMemo(() => {
-    const map = new Map();
-    for (const r of Array.isArray(catalog) ? catalog : []) {
-      const labelK = normalizeKey(r.label);
-      const y = Number(r.studyYear);
-      const cyc = r.cycle ? normalizeKey(r.cycle) : "any";
-      if (!labelK || Number.isNaN(y)) continue;
-      const key = `${labelK}__${y}__${cyc}`;
-      map.set(key, cleanStr(r.code));
+  // ✅ Clé par CODE uniquement (pas code+semestre) pour éviter les doublons
+  // quand une matière a été activée avec un semestre différent de celui du catalogue
+  const csMap = useMemo(() => {
+    const m = new Map();
+    for (const cs of classSubjects) {
+      const code = cleanStr(cs.code);
+      if (!code) continue;
+      // Si plusieurs class_subjects pour le même code (ne devrait pas arriver),
+      // on garde celui qui est actif, sinon le plus récent
+      if (!m.has(code) || cs.active) m.set(code, cs);
     }
-    return map;
-  }, [catalog]);
+    return m;
+  }, [classSubjects]);
 
-  // ✅ priorité:
-  // 1) s.code
-  // 2) fallback catalogue (legacy)
-  const getCodeForSubject = (s) => {
-    const direct = cleanStr(s?.code);
-    if (direct) return direct;
-
-    const label = displayLabelFor(s);
-    const y = Number(s.studyYear);
-    const cyc = cleanStr(s.cycle);
-
-    const labelK = normalizeKey(label);
-    if (!labelK || Number.isNaN(y)) return "";
-
-    if (cyc) {
-      const kExact = `${labelK}__${y}__${normalizeKey(cyc)}`;
-      const exact = catalogMap.get(kExact);
-      if (exact) return exact;
-    }
-
-    const kAny = `${labelK}__${y}__any`;
-    return catalogMap.get(kAny) || "";
-  };
-
-  const groupedBySalle = useMemo(() => {
-    const map = new Map();
-    for (const s of subjects) {
-      const filiere = s.filiere || "Filière non définie";
-      const salleCode = s.specialiteCode || "???";
-      const specLabel = s.specialite || "Spécialité ?";
-      const level = s.studyYear || 1;
-      const cycle = s.cycle || "";
-      const key = `${filiere}::${salleCode}::${level}::${cycle}`;
-
-      if (!map.has(key)) {
-        map.set(key, { key, filiere, salleCode, specialite: specLabel, level, cycle, subjects: [] });
-      }
-      map.get(key).subjects.push(s);
-    }
-
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        a.filiere.localeCompare(b.filiere) ||
-        a.salleCode.localeCompare(b.salleCode) ||
-        String(a.level).localeCompare(String(b.level)) ||
-        String(a.cycle).localeCompare(String(b.cycle))
-    );
-  }, [subjects]);
-
-  const handleCreate = () => {
-    setEditing(null);
-    setOpenModal(true);
-  };
-
-  const handleEdit = (subject) => {
-    setEditing(subject);
-    setOpenModal(true);
-  };
-
-  const handleDelete = async (subject) => {
-    const label = displayLabelFor(subject) || "sans titre";
-    if (!window.confirm(`Supprimer la matière "${label}" ?`)) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/subjects/${subject.id}`, { method: "DELETE" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Échec de la suppression");
-      await loadSubjects();
-    } catch (e) {
-      alert(e.message || "Erreur lors de la suppression");
-    }
-  };
-
-  /**
-   * ✅ SAVE (Modal)
-   * On calcule label/name depuis baseLabel + semesterMode.
+  /* ── Fusion catalogue + class_subjects ──
+   * Règle : on part toujours du catalogue.
+   * Si le catalogue est vide (filtres trop stricts, données absentes),
+   * on affiche directement les class_subjects existants (mode dégradé).
+   * Dans tous les cas, un class_subject sans entrée catalogue apparaît en bas.
    */
-  const handleSave = async (payload) => {
-    const common = {
-      filiere: payload.filiere,
-      specialite: payload.specialite,
-      specialiteCode: payload.specialiteCode,
-      option: payload.option || null,
-      optionCode: payload.optionCode || null,
-      studyYear: payload.studyYear,
-      cycle: payload.cycle || null,
-      isOptional: payload.isOptional === true,
+  const merged = useMemo(() => {
+    const result = [];
+    const seenCodes = new Set();
 
-      semesterMode: payload.semesterMode || "S1",
-      baseLabel: payload.baseLabel || null,
-      labelS1: payload.labelS1 || null,
-      labelS2: payload.labelS2 || null,
-
-      code: payload.code || null,
-      credits: payload.credits != null ? payload.credits : null,
-    };
-
-    const computedLabel = computeLabelFromParts({
-      semesterMode: common.semesterMode,
-      baseLabel: common.baseLabel,
-      labelS1: common.labelS1,
-      labelS2: common.labelS2,
-    });
-
-    try {
-      // EDIT
-      if (payload.id) {
-        const body = { ...common, label: computedLabel, name: computedLabel };
-
-        const res = await fetch(`${API_BASE}/subjects/${payload.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || "Erreur d’enregistrement");
-
-        setOpenModal(false);
-        setEditing(null);
-        await loadSubjects();
-        return;
-      }
-
-      // CREATE
-      const body = { ...common, label: computedLabel, name: computedLabel };
-
-      const res = await fetch(`${API_BASE}/subjects`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+    // ── Priorité 1 : matières du catalogue ──
+    for (const s of catalogSubjects) {
+      const code = cleanStr(s.code || s.subjectCode || "");
+      const sem = cleanStr(s.semesterMode || "S1");
+      if (!code) continue;
+      seenCodes.add(code);
+      const cs = csMap.get(code);
+      const effectiveSem = cs?.semesterOverride || cs?.semesterMode || sem;
+      result.push({
+        _type: "catalog", id: s.id, code,
+        label: cs?.labelOverride || cleanStr(s.label || ""),
+        originalLabel: cleanStr(s.label || ""),
+        semesterMode: effectiveSem,
+        originalSemester: sem,
+        isReported: !!(cs?.semesterOverride && cs.semesterOverride !== sem),
+        moduleCode: cleanStr(cs?.moduleCode || s.moduleCode || ""),
+        moduleLabel: cleanStr(cs?.moduleLabel || s.moduleLabel || ""),
+        credits: cs?.creditsOverride ?? s.credits ?? null,
+        classSubject: cs || null,
+        active: cs?.active ?? false,
+        hasOverrides: cs?.hasOverrides ?? false,
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Erreur d’enregistrement");
-
-      setOpenModal(false);
-      setEditing(null);
-      await loadSubjects();
-    } catch (e) {
-      alert(e.message || "Erreur lors de l’enregistrement");
     }
-  };
 
-  const handleSaveCatalogBulk = async (items) => {
-    try {
-      const res = await fetch(`${API_BASE}/subjects/catalog/bulk`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
+    // ── Priorité 2 : class_subjects sans correspondance catalogue ──
+    // (matières créées manuellement OU catalogue vide → mode dégradé)
+    for (const cs of classSubjects) {
+      const code = cleanStr(cs.code);
+      if (!code || seenCodes.has(code)) continue;
+      seenCodes.add(code);
+      result.push({
+        _type: "manual", id: cs.id, code,
+        label: cs.labelOverride || cleanStr(cs.label || ""),
+        originalLabel: cleanStr(cs.label || ""),
+        semesterMode: cs.semesterOverride || cleanStr(cs.semesterMode || "S1"),
+        originalSemester: cleanStr(cs.semesterMode || "S1"),
+        isReported: !!(cs.semesterOverride && cs.semesterOverride !== cs.semesterMode),
+        moduleCode: cleanStr(cs.moduleCode || ""),
+        moduleLabel: cleanStr(cs.moduleLabel || ""),
+        credits: cs.creditsOverride ?? cs.credits ?? null,
+        classSubject: cs, active: cs.active ?? false,
+        hasOverrides: cs.hasOverrides ?? false,
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Erreur d’enregistrement du catalogue");
-      await loadCatalog();
-      setOpenCatalogModal(false);
-    } catch (e) {
-      alert(e.message || "Erreur lors de l’enregistrement du catalogue");
-    }
-  };
-
-  return (
-    <div style={styles.layout}>
-      <aside style={styles.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
-
-      <main style={styles.right}>
-        <HorizontalNavBar />
-        <div style={styles.pageBody}>
-          <div style={styles.container}>
-            <MatieresHeader loading={loading} total={subjects.length} onAdd={handleCreate} />
-
-            <BulkEditMiniBar onOpen={() => setOpenBulkEdit(true)} />
-
-            <CatalogueMiniBar loading={loadingCatalog} total={catalog.length} onOpen={() => setOpenCatalogModal(true)} />
-
-            <MatieresGroupedBySalle
-              groups={groupedBySalle}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              getCode={getCodeForSubject}
-            />
-          </div>
-        </div>
-      </main>
-
-      {openModal && (
-        <MatiereModal
-          subject={editing}
-          onClose={() => {
-            setOpenModal(false);
-            setEditing(null);
-          }}
-          onSave={handleSave}
-        />
-      )}
-
-      {openCatalogModal && <CatalogueModal onClose={() => setOpenCatalogModal(false)} onSaveBulk={handleSaveCatalogBulk} />}
-
-      {openBulkEdit && (
-        <BulkEditCodesCreditsModal
-          subjects={subjects}
-          getCodeForSubject={getCodeForSubject}
-          onClose={() => setOpenBulkEdit(false)}
-          onSaved={loadSubjects}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ───────────────────── Header ───────────────────── */
-function MatieresHeader({ loading, total, onAdd }) {
-  return (
-    <section style={headerStyles.card}>
-      <div style={headerStyles.left}>
-        <h1 style={headerStyles.title}>Gestion des matières</h1>
-        <p style={headerStyles.subtitle}>Définissez les ECUE, crédits, codes et semestre (S1 / S2 / S1 & S2) par salle.</p>
-        <p style={headerStyles.badge}>{loading ? "Chargement des matières…" : `${total} enregistrement(s)`}</p>
-      </div>
-      <div style={headerStyles.right}>
-        <button type="button" style={headerStyles.addBtn} onClick={onAdd}>
-          <Plus size={16} />
-          <span>Ajouter une matière</span>
-        </button>
-      </div>
-    </section>
-  );
-}
-
-/* ✅ Barre gestion rapide */
-function BulkEditMiniBar({ onOpen }) {
-  return (
-    <section style={bulkStyles.card}>
-      <div style={bulkStyles.left}>
-        <div style={bulkStyles.title}>Gestion rapide : Codes & Crédits</div>
-        <div style={bulkStyles.subtitle}>Filtre, coche les matières, puis applique un crédit et enregistre.</div>
-      </div>
-      <div style={bulkStyles.right}>
-        <button type="button" style={bulkStyles.btn} onClick={onOpen}>
-          Gérer
-        </button>
-      </div>
-    </section>
-  );
-}
-
-/**
- * ✅ MODAL: sélection + appliquer crédit sur sélection
- * ✅ FIX IMPORTANT: saveSelected ne doit JAMAIS "vider" baseLabel/label/name.
- * => On relit les champs existants et on recalcule label/name correctement.
- */
-function BulkEditCodesCreditsModal({ subjects, getCodeForSubject, onClose, onSaved }) {
-  const [cycle, setCycle] = useState("BTS");
-  const [studyYear, setStudyYear] = useState(""); // optionnel
-  const [semesterMode, setSemesterMode] = useState(""); // optionnel
-
-  const [rows, setRows] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  const [applyCreditValue, setApplyCreditValue] = useState("");
-
-  useEffect(() => {
-    let list = Array.isArray(subjects) ? subjects : [];
-
-    if (cycle) list = list.filter((s) => (s.cycle || "") === cycle);
-    if (studyYear !== "") {
-      const y = Number(studyYear);
-      list = list.filter((s) => Number(s.studyYear) === y);
-    }
-    if (semesterMode) {
-      const sm = (s) => cleanStr(s.semesterMode || s.semester || "S1");
-      list = list.filter((s) => sm(s) === semesterMode);
     }
 
-    setRows(
-      list
-        .slice()
-        .sort((a, b) => String(displayLabelFor(a)).localeCompare(String(displayLabelFor(b))))
-        .map((s) => {
-          const codeInitial = cleanStr(s.code || (getCodeForSubject ? getCodeForSubject(s) : "") || "");
-          return {
-            id: s.id,
-            label: displayLabelFor(s),
-            specialite: cleanStr(s.specialite) || "—",
-            specialiteCode: cleanStr(s.specialiteCode) || "—",
-            code: codeInitial,
-            credits: s.credits != null ? String(s.credits) : "",
-            selected: false,
-            _raw: s,
-          };
-        })
+    result.sort(
+      (a, b) => cleanStr(a.moduleCode).localeCompare(cleanStr(b.moduleCode)) ||
+        cleanStr(a.code).localeCompare(cleanStr(b.code))
     );
-  }, [subjects, cycle, studyYear, semesterMode, getCodeForSubject]);
+    return result;
+  }, [catalogSubjects, csMap, classSubjects]);
 
-  const selectedCount = useMemo(() => rows.filter((r) => r.selected).length, [rows]);
-  const allSelected = rows.length > 0 && selectedCount === rows.length;
+  /* ── Filtrage ── */
+  const filtered = useMemo(() => {
+    let list = merged;
+    if (viewTab === "active") list = list.filter((s) => s.active);
+    if (viewTab === "inactive") list = list.filter((s) => !s.active);
+    if (semFilter) list = list.filter((s) => semMatchesFilter(s.semesterMode, semFilter));
+    if (searchQ.trim()) {
+      const q = searchQ.trim().toLowerCase();
+      list = list.filter(
+        (s) => s.label.toLowerCase().includes(q) ||
+          s.code.toLowerCase().includes(q) ||
+          s.moduleCode.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [merged, viewTab, semFilter, searchQ]);
 
-  const toggleAll = (checked) => setRows((prev) => prev.map((r) => ({ ...r, selected: !!checked })));
-  const toggleOne = (id, checked) => setRows((prev) => prev.map((r) => (r.id === id ? { ...r, selected: !!checked } : r)));
-  const update = (id, patch) => setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const stats = useMemo(() => ({
+    total: merged.length,
+    active: merged.filter((s) => s.active).length,
+    inactive: merged.filter((s) => !s.active).length,
+    modified: merged.filter((s) => s.hasOverrides).length,
+  }), [merged]);
 
-  const applyCreditsToSelected = () => {
-    setMsg("");
-    const v = String(applyCreditValue || "").trim();
-    if (v === "") return setMsg("❌ Renseigne une valeur de crédit à appliquer.");
-    const num = Number(v.replace(",", "."));
-    if (Number.isNaN(num)) return setMsg("❌ Le crédit doit être un nombre.");
-    if (selectedCount === 0) return setMsg("❌ Sélectionne d’abord les matières à modifier.");
+  const groups = useMemo(() => {
+    const map = new Map();
+    for (const s of filtered) {
+      const k = s.moduleCode || "__none__";
+      if (!map.has(k)) map.set(k, { moduleCode: s.moduleCode, moduleLabel: s.moduleLabel, items: [] });
+      map.get(k).items.push(s);
+    }
+    return Array.from(map.values());
+  }, [filtered]);
 
-    setRows((prev) => prev.map((r) => (r.selected ? { ...r, credits: String(num) } : r)));
-    setMsg(`✅ Crédit appliqué à ${selectedCount} matière(s).`);
-  };
+  const classesByFiliere = useMemo(() => {
+    const map = new Map();
+    for (const c of classes) {
+      const f = c.filiere || "Autre";
+      if (!map.has(f)) map.set(f, []);
+      map.get(f).push(c);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [classes]);
 
-  const saveSelected = async () => {
-    setMsg("");
-    if (selectedCount === 0) return setMsg("❌ Aucune matière sélectionnée.");
-
+  /* ── Activer / désactiver ── */
+  const handleToggle = async (subject) => {
+    if (saving) return;
     setSaving(true);
     try {
-      const targets = rows.filter((r) => r.selected);
-
-      for (const r of targets) {
-        const creditsStr = String(r.credits || "").trim();
-        const creditsNum = creditsStr === "" ? null : Number(creditsStr.replace(",", "."));
-        if (creditsStr !== "" && Number.isNaN(creditsNum)) throw new Error(`Crédit invalide pour "${r.label}"`);
-
-        const s = r._raw || {};
-
-        // ✅ On relit les champs "parts" existants
-        const preservedSemesterMode = cleanStr(s.semesterMode || s.semester || "S1");
-        const preservedBaseLabel = cleanStr(s.baseLabel || s.label || s.name || "");
-        const preservedLabelS1 = cleanStr(s.labelS1 || "");
-        const preservedLabelS2 = cleanStr(s.labelS2 || "");
-
-        // ✅ On recalcule label/name de manière sûre
-        const computedLabel = computeLabelFromParts({
-          semesterMode: preservedSemesterMode,
-          baseLabel: preservedBaseLabel,
-          labelS1: preservedLabelS1,
-          labelS2: preservedLabelS2,
+      if (!subject.classSubject) {
+        await apiFetch("/class-subjects/activate", {
+          method: "POST",
+          body: JSON.stringify({
+            classId: selectedClassId, academicYear,
+            subjectId: subject.id, label: subject.originalLabel,
+            code: subject.code, semesterMode: subject.originalSemester,
+            moduleCode: subject.moduleCode, moduleLabel: subject.moduleLabel,
+            credits: subject.credits,
+          }),
         });
-
-        if (!computedLabel) {
-          // Si ton enregistrement est déjà cassé (baseLabel vide), on refuse d'écraser encore
-          throw new Error(`ECUE introuvable pour l’ID ${r.id}. Ouvre "Modifier" et renseigne le nom ECUE.`);
-        }
-
-        const body = {
-          // salles
-          filiere: s.filiere || null,
-          specialite: s.specialite || null,
-          specialiteCode: s.specialiteCode || null,
-          option: s.option || null,
-          optionCode: s.optionCode || null,
-          cycle: s.cycle || null,
-          studyYear: s.studyYear ?? null,
-          isOptional: !!s.isOptional,
-
-          // ✅ parts ECUE (préservées)
-          semesterMode: preservedSemesterMode,
-          baseLabel: preservedBaseLabel,
-          labelS1: preservedLabelS1 || null,
-          labelS2: preservedLabelS2 || null,
-
-          // ✅ valeurs modifiées
-          code: cleanStr(r.code) || null,
-          credits: creditsNum,
-
-          // ✅ label/name TOUJOURS coherents
-          label: computedLabel,
-          name: computedLabel,
-        };
-
-        const res = await fetch(`${API_BASE}/subjects/${r.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
+        showToast("ok", `« ${subject.label} » activée ✓`);
+      } else {
+        await apiFetch(`/class-subjects/${subject.classSubject.id}/toggle`, {
+          method: "PATCH",
+          body: JSON.stringify({ active: !subject.active }),
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || `Erreur sur "${computedLabel}"`);
+        showToast("ok", subject.active ? `« ${subject.label} » désactivée` : `« ${subject.label} » activée ✓`);
       }
-
-      setMsg(`✅ Enregistré (${selectedCount} matière(s)).`);
-      await onSaved?.();
+      await loadSubjects();
     } catch (e) {
-      setMsg(`❌ ${e.message || "Erreur"}`);
+      showToast("err", e.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const inputStyle = {
-    width: "100%",
-    height: 34,
-    borderRadius: 10,
-    border: `1px solid ${colors.border}`,
-    padding: "0 .6rem",
-    fontSize: ".85rem",
-    background: "var(--bg-input, #F9FAFB)",
-    outline: "none",
-    boxSizing: "border-box",
+  const startEdit = (subject) => {
+    const cs = subject.classSubject;
+    if (!cs) return;
+    setEditingId(cs.id);
+    setEditForm({
+      labelOverride: cs.labelOverride || "",
+      codeOverride: cs.codeOverride || "",
+      creditsOverride: cs.creditsOverride != null ? String(cs.creditsOverride) : "",
+      semesterOverride: cs.semesterOverride || subject.originalSemester,
+      moduleCode: cs.moduleCode || subject.moduleCode || "",
+      moduleLabel: cs.moduleLabel || subject.moduleLabel || "",
+    });
+  };
+
+  const handleSaveOverride = async () => {
+    if (!editingId || saving) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/class-subjects/${editingId}/override`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          labelOverride: editForm.labelOverride?.trim() || null,
+          codeOverride: editForm.codeOverride?.trim() || null,
+          creditsOverride: editForm.creditsOverride !== "" ? Number(editForm.creditsOverride) : null,
+          semesterOverride: editForm.semesterOverride || null,
+          moduleCode: editForm.moduleCode?.trim() || undefined,
+          moduleLabel: editForm.moduleLabel?.trim() || undefined,
+        }),
+      });
+      setEditingId(null);
+      showToast("ok", "Modifications enregistrées ✓");
+      await loadSubjects();
+    } catch (e) {
+      showToast("err", e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async (cs) => {
+    if (!cs || !window.confirm("Réinitialiser aux valeurs originales du catalogue ?")) return;
+    setSaving(true);
+    try {
+      await apiFetch(`/class-subjects/${cs.id}/override`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          labelOverride: null, codeOverride: null,
+          creditsOverride: null,
+          semesterOverride: null,
+        }),
+      });
+      showToast("ok", "Valeurs originales restaurées");
+      await loadSubjects();
+    } catch (e) {
+      showToast("err", e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ── Activation multiple ── */
+  const toggleSelectCode = (code) => {
+    setSelectedCodes((prev) => {
+      const next = new Set(prev);
+      next.has(code) ? next.delete(code) : next.add(code);
+      return next;
+    });
+  };
+
+  const handleActivateMultiple = async () => {
+    const toActivate = merged.filter((s) => selectedCodes.has(s.code) && !s.active);
+    if (!toActivate.length) return;
+    setActivatingMultiple(true);
+    let ok = 0, err = 0;
+    for (const subject of toActivate) {
+      try {
+        if (!subject.classSubject) {
+          await apiFetch("/class-subjects/activate", {
+            method: "POST",
+            body: JSON.stringify({
+              classId: selectedClassId, academicYear,
+              subjectId: subject.id, label: subject.originalLabel,
+              code: subject.code, semesterMode: subject.originalSemester,
+              moduleCode: subject.moduleCode, moduleLabel: subject.moduleLabel,
+              credits: subject.credits,
+            }),
+          });
+        } else {
+          await apiFetch(`/class-subjects/${subject.classSubject.id}/toggle`, {
+            method: "PATCH",
+            body: JSON.stringify({ active: true }),
+          });
+        }
+        ok++;
+      } catch (_) { err++; }
+    }
+    setSelectedCodes(new Set());
+    await loadSubjects();
+    setActivatingMultiple(false);
+    showToast("ok", `${ok} matière${ok > 1 ? "s" : ""} activée${ok > 1 ? "s" : ""}${err > 0 ? ` (${err} erreur${err > 1 ? "s" : ""})` : ""} ✓`);
+  };
+
+  // Activer/désactiver tout un groupe UE
+  const handleActivateGroup = async (groupItems, activate) => {
+    if (saving) return;
+    setSaving(true);
+    let ok = 0;
+    for (const subject of groupItems) {
+      if (subject.active === activate) continue;
+      try {
+        if (!subject.classSubject) {
+          await apiFetch("/class-subjects/activate", {
+            method: "POST",
+            body: JSON.stringify({
+              classId: selectedClassId, academicYear,
+              subjectId: subject.id, label: subject.originalLabel,
+              code: subject.code, semesterMode: subject.originalSemester,
+              moduleCode: subject.moduleCode, moduleLabel: subject.moduleLabel,
+              credits: subject.credits,
+            }),
+          });
+        } else {
+          await apiFetch(`/class-subjects/${subject.classSubject.id}/toggle`, {
+            method: "PATCH",
+            body: JSON.stringify({ active: activate }),
+          });
+        }
+        ok++;
+      } catch (_) {}
+    }
+    await loadSubjects();
+    setSaving(false);
+    if (ok) showToast("ok", `${ok} matière${ok > 1 ? "s" : ""} ${activate ? "activée" : "désactivée"}${ok > 1 ? "s" : ""} ✓`);
+  };
+
+  const toggleGroup = (key) => setCollapsedGroups((prev) => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+
+  const toggleFiliere = (f) => setExpandedFilieres((prev) => {
+    const next = new Set(prev);
+    next.has(f) ? next.delete(f) : next.add(f);
+    return next;
+  });
+
+  /* ════ RENDU ════ */
+  return (
+    <div style={sx.root}>
+      <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
+      <div style={sx.contentArea}>
+        {/* Topbar sans onMenu (supprimé) */}
+        <HorizontalNavBar
+          title="Matières"
+          subtitle={selectedClass ? `${selectedClass.title} · ${academicYear}` : `Catalogue ${academicYear}`}
+        />
+
+        <div style={sx.body}>
+          {/* ══ SIDEBAR CLASSES ══ */}
+          <aside style={sx.sidebar}>
+            <div style={sx.sideHeader}>
+              <Layers size={13} style={{ color: "var(--ip-teal)", flexShrink: 0 }} />
+              <span>Classes · {academicYear}</span>
+            </div>
+
+            {loadingClasses ? (
+              <div style={sx.hint}>Chargement...</div>
+            ) : classesByFiliere.length === 0 ? (
+              <div style={sx.hint}>Aucune classe trouvée</div>
+            ) : classesByFiliere.map(([filiere, cls]) => {
+              const shortFiliere = filiere
+                .replace("Filières de ", "").replace("Filières ", "").replace("filières ", "");
+              const expanded = expandedFilieres.has(filiere);
+              const activeCount = cls.filter((c) => c.active).length;
+              return (
+                <div key={filiere} style={sx.filiereBlock}>
+                  <button style={sx.filiereToggle} onClick={() => toggleFiliere(filiere)}>
+                    <div style={sx.filiereLeft}>
+                      {expanded ? <ChevronDown size={12} style={{ color: "var(--ip-gray)" }} /> : <ChevronRight size={12} style={{ color: "var(--ip-gray)" }} />}
+                      <span style={sx.filiereLabel}>{shortFiliere}</span>
+                    </div>
+                    <span style={sx.filiereCount}>{activeCount}/{cls.length}</span>
+                  </button>
+                  {expanded && cls.map((c) => {
+                    const isSel = selectedClassId === c.id;
+                    return (
+                      <button key={c.id} onClick={() => setSelectedClassId(c.id)}
+                        style={{ ...sx.classBtn, ...(isSel ? sx.classBtnSel : {}) }}>
+                        <div style={{ ...sx.classActiveDot, background: c.active ? "var(--ip-teal)" : "var(--border)" }} />
+                        <div style={sx.classBtnContent}>
+                          <div style={sx.classBtnName}>{c.displayName || c.title}</div>
+                          <div style={sx.classBtnMeta}>
+                            {c.cycle}{c.studyYear ? ` · An ${c.studyYear}` : ""}
+                            {c.studentCount ? ` · ${c.studentCount} ét.` : ""}
+                          </div>
+                        </div>
+                        {isSel && <div style={sx.selIndicator} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </aside>
+
+          {/* ══ CONTENU PRINCIPAL ══ */}
+          <main style={sx.main}>
+            {toast && (
+              <div style={{ ...sx.toast, ...(toast.type === "ok" ? sx.toastOk : sx.toastErr) }}>
+                {toast.type === "ok" ? <Check size={13} /> : <AlertCircle size={13} />}
+                {toast.msg}
+              </div>
+            )}
+
+            {!selectedClass ? (
+              <div style={sx.emptyState}>
+                <div style={sx.emptyIcon}><BookOpen size={32} style={{ color: "var(--ip-teal)" }} /></div>
+                <div style={sx.emptyTitle}>Sélectionnez une classe</div>
+                <div style={sx.emptySub}>
+                  Choisissez une classe dans le panneau gauche<br />
+                  pour gérer ses matières pour {academicYear}.
+                </div>
+              </div>
+            ) : (
+              <div style={sx.mainContent}>
+                {/* ── En-tête classe ── */}
+                <div style={sx.classCard}>
+                  <div style={sx.classCardLeft}>
+                    <div style={sx.classCardTitle}>{selectedClass.title}</div>
+                    <div style={sx.classCardMeta}>
+                      <span>{selectedClass.filiere}</span>
+                      <span style={sx.metaDot} />
+                      <span>{selectedClass.cycle}</span>
+                      {selectedClass.studyYear && (
+                        <><span style={sx.metaDot} /><span>Année {selectedClass.studyYear}</span></>
+                      )}
+                      {!selectedClass.active && <span style={sx.inactivePill}>Inactive</span>}
+                    </div>
+                  </div>
+
+                  {/* Stats cliquables → filtre */}
+                  <div style={sx.statsRow}>
+                    <StatBox n={stats.total} label="Total" active={viewTab === "all"} onClick={() => setViewTab("all")} />
+                    <StatBox n={stats.active} label="Activées" color="var(--ip-teal)" active={viewTab === "active"} onClick={() => setViewTab("active")} />
+                    <StatBox n={stats.inactive} label="Non activées" color="var(--ip-gray)" active={viewTab === "inactive"} onClick={() => setViewTab("inactive")} />
+                  </div>
+
+                  <div style={sx.classCardActions}>
+                    <button style={sx.btnSecondary} onClick={() => setShowBulk(true)}>
+                      <Zap size={13} /> Gestion rapide
+                    </button>
+                    <button style={sx.btnPrimary} onClick={() => setShowAddModal(true)}>
+                      <Plus size={13} /> Ajouter
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Onglets vue ── */}
+                <div style={sx.tabsRow}>
+                  <ViewTab active={viewTab === "all"} onClick={() => setViewTab("all")}>
+                    Catalogue complet ({stats.total})
+                  </ViewTab>
+                  <ViewTab active={viewTab === "active"} color="var(--ip-teal)" onClick={() => setViewTab("active")}>
+                    <CheckCircle2 size={13} /> Activées ({stats.active})
+                  </ViewTab>
+                  <ViewTab active={viewTab === "inactive"} color="var(--ip-gray)" onClick={() => setViewTab("inactive")}>
+                    <Circle size={13} /> Non activées ({stats.inactive})
+                  </ViewTab>
+                </div>
+
+                {/* ── Barre de filtres ── */}
+                <div style={sx.filtersBar}>
+                  <div style={sx.searchBox}>
+                    <Search size={13} style={sx.searchIco} />
+                    <input style={sx.searchInput} placeholder="Rechercher matière, code, UE…"
+                      value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
+                    {searchQ && (
+                      <button style={sx.clearBtn} onClick={() => setSearchQ("")}><X size={11} /></button>
+                    )}
+                  </div>
+
+                  <div style={sx.semRow}>
+                    <PillBtn active={!semFilter} onClick={() => setSemFilter("")}>Tous</PillBtn>
+                    {allCycleSemesters.map((o) => (
+                      <PillBtn key={o.value} active={semFilter === o.value} onClick={() => setSemFilter(o.value)}>
+                        {o.value}
+                        {yearSemesters.includes(o.value) && <span style={sx.pillDot} />}
+                      </PillBtn>
+                    ))}
+                  </div>
+
+                  <span style={sx.resultCount}>{filtered.length} matière{filtered.length > 1 ? "s" : ""}</span>
+                </div>
+
+                {/* Légende semestres */}
+                <div style={sx.semLegend}>
+                  <span style={sx.semLegendDot} /> semestres de cette année ({yearSemesters.join(", ")})
+                  {" · "}autres = années différentes du même cycle
+                </div>
+
+                {/* ── Barre d'activation multiple (flottante quand sélection) ── */}
+                {selectedCodes.size > 0 && (
+                  <div style={sx.activationBar}>
+                    <span style={sx.activationBarCount}>
+                      {selectedCodes.size} matière{selectedCodes.size > 1 ? "s" : ""} sélectionnée{selectedCodes.size > 1 ? "s" : ""}
+                    </span>
+                    <button style={sx.btnGhost} onClick={() => setSelectedCodes(new Set())}>
+                      <X size={13} /> Désélectionner tout
+                    </button>
+                    <button
+                      style={{ ...sx.btnPrimary, background: "var(--ip-teal)" }}
+                      onClick={handleActivateMultiple}
+                      disabled={activatingMultiple}
+                    >
+                      {activatingMultiple ? "Activation…" : `✓ Activer les ${selectedCodes.size} sélectionnées`}
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Liste matières ── */}
+                {loadingSubjects ? (
+                  <div style={sx.hint}>Chargement des matières…</div>
+                ) : filtered.length === 0 ? (
+                  <div style={sx.emptyState}>
+                    <div style={sx.emptyTitle}>
+                      {viewTab === "active" ? "Aucune matière activée" :
+                        viewTab === "inactive" ? "Toutes les matières sont activées ✓" :
+                          "Aucune matière"}
+                    </div>
+                    <div style={sx.emptySub}>
+                      {viewTab === "inactive"
+                        ? "Toutes les matières du catalogue sont déjà actives pour cette classe."
+                        : "Ajustez les filtres ou ajoutez des matières depuis le catalogue."}
+                    </div>
+                  </div>
+                ) : (
+                  groups.map((group) => {
+                    const key = group.moduleCode || "__none__";
+                    const collapsed = collapsedGroups.has(key);
+                    const activeItems = group.items.filter((s) => s.active).length;
+                    return (
+                      <div key={key} style={sx.group}>
+                        <div style={sx.groupHeader}>
+                          <button style={sx.groupHeaderBtn} onClick={() => toggleGroup(key)}>
+                            <span style={sx.groupChevron}>
+                              {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                            </span>
+                            {group.moduleCode ? (
+                              <>
+                                <span style={sx.ueCode}>{group.moduleCode}</span>
+                                {group.moduleLabel && <span style={sx.ueLabel}>{group.moduleLabel}</span>}
+                              </>
+                            ) : <span style={sx.ueCode}>Sans UE</span>}
+                          </button>
+                          <div style={sx.groupActions}>
+                            <span style={sx.groupStats}>
+                              <span style={sx.groupStatActive}>{activeItems} activée{activeItems > 1 ? "s" : ""}</span>
+                              <span style={sx.groupStatTotal}>/ {group.items.length}</span>
+                            </span>
+                            {/* Tout activer / tout désactiver le groupe */}
+                            {activeItems < group.items.length ? (
+                              <button style={sx.groupActionBtn} onClick={() => handleActivateGroup(group.items, true)}>
+                                <CheckCircle2 size={12} /> Tout activer
+                              </button>
+                            ) : (
+                              <button style={{ ...sx.groupActionBtn, ...sx.groupActionBtnOff }} onClick={() => handleActivateGroup(group.items, false)}>
+                                <Circle size={12} /> Tout désactiver
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {!collapsed && group.items.map((subject) => {
+                          const subKey = `${subject.code}__${subject.semesterMode}`;
+                          const isEditing = editingId === subject.classSubject?.id;
+                          const effLabel = subject.classSubject?.labelOverride || subject.label;
+                          const effCode = subject.classSubject?.codeOverride || subject.code;
+                          const effCredits = subject.classSubject?.creditsOverride ?? subject.credits;
+
+                          if (isEditing) {
+                            return (
+                              <div key={subKey} style={sx.editRow}>
+                                <div style={sx.editBanner}>
+                                  <Sparkles size={13} />
+                                  <span>Modification pour <strong>{selectedClass.title}</strong> · {academicYear} uniquement</span>
+                                  <span style={sx.editBannerNote}>(catalogue original non modifié)</span>
+                                </div>
+                                <div style={sx.editGrid}>
+                                  <InlineField label="Intitulé" span={2}>
+                                    <input style={sx.input} value={editForm.labelOverride || ""}
+                                      placeholder={subject.originalLabel}
+                                      onChange={(e) => setEditForm((f) => ({ ...f, labelOverride: e.target.value }))} />
+                                  </InlineField>
+                                  <InlineField label="Code ECUE">
+                                    <input style={sx.input} value={editForm.codeOverride || ""}
+                                      placeholder={subject.code}
+                                      onChange={(e) => setEditForm((f) => ({ ...f, codeOverride: e.target.value }))} />
+                                  </InlineField>
+                                  <InlineField label="Crédits">
+                                    <input type="number" min="0" step="0.5" style={sx.input}
+                                      value={editForm.creditsOverride || ""}
+                                      placeholder={subject.credits !== null ? String(subject.credits) : "—"}
+                                      onChange={(e) => setEditForm((f) => ({ ...f, creditsOverride: e.target.value }))} />
+                                  </InlineField>
+                                  {/* ── Report de semestre ── */}
+                                  <InlineField label="Semestre (report possible)" span={2}>
+                                    <div style={sx.semReportWrap}>
+                                      <select style={{ ...sx.input, flex: 1 }} value={editForm.semesterOverride || ""}
+                                        onChange={(e) => setEditForm((f) => ({ ...f, semesterOverride: e.target.value }))}>
+                                        {allCycleSemesters.map((o) => (
+                                          <option key={o.value} value={o.value}>{o.label}</option>
+                                        ))}
+                                      </select>
+                                      {editForm.semesterOverride !== subject.originalSemester && (
+                                        <div style={sx.reportBadge}>
+                                          <MoveRight size={12} />
+                                          Reporté depuis {subject.originalSemester}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div style={sx.semHint}>
+                                      Semestre prévu dans le catalogue : <strong>{subject.originalSemester}</strong>.
+                                      Vous pouvez le déplacer vers n'importe quel semestre du cycle {selectedClass.cycle}.
+                                    </div>
+                                  </InlineField>
+                                  <InlineField label="Code UE">
+                                    <input style={sx.input} value={editForm.moduleCode || ""} placeholder="Ex: UE1"
+                                      onChange={(e) => setEditForm((f) => ({ ...f, moduleCode: e.target.value }))} />
+                                  </InlineField>
+                                  <InlineField label="Libellé UE">
+                                    <input style={sx.input} value={editForm.moduleLabel || ""} placeholder="Ex: Comptabilité"
+                                      onChange={(e) => setEditForm((f) => ({ ...f, moduleLabel: e.target.value }))} />
+                                  </InlineField>
+                                </div>
+                                <div style={sx.editFooter}>
+                                  <button style={sx.btnGhost} onClick={() => setEditingId(null)}>Annuler</button>
+                                  <button style={sx.btnPrimary} onClick={handleSaveOverride} disabled={saving}>
+                                    {saving ? "Enregistrement…" : "Enregistrer"}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          /* ── Ligne normale ── */
+                          return (
+                            <div key={subKey}
+                              style={{ ...sx.subjectRow, ...(subject.active ? {} : sx.subjectRowOff), ...(selectedCodes.has(subject.code) ? sx.subjectRowSelected : {}) }}>
+
+                              {/* Checkbox sélection multiple (seulement pour non actives) */}
+                              {!subject.active && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCodes.has(subject.code)}
+                                  onChange={() => toggleSelectCode(subject.code)}
+                                  style={{ cursor: "pointer", flexShrink: 0 }}
+                                  title="Sélectionner pour activation groupée"
+                                />
+                              )}
+
+                              {/* ── Bouton activation clair ── */}
+                              <button
+                                style={{ ...sx.activateBtn, ...(subject.active ? sx.activateBtnOn : sx.activateBtnOff) }}
+                                onClick={() => handleToggle(subject)}
+                                disabled={saving}
+                                title={subject.active ? "Cliquer pour désactiver" : "Cliquer pour activer"}
+                              >
+                                {subject.active ? (
+                                  <><CheckCircle2 size={14} /> Activée</>
+                                ) : (
+                                  <><Circle size={14} /> Activer</>
+                                )}
+                              </button>
+
+                              {/* Badge code */}
+                              <div style={{
+                                ...sx.codeBadge,
+                                ...(subject.hasOverrides ? sx.codeBadgeEdited : {}),
+                              }}>
+                                {effCode || "—"}
+                              </div>
+
+                              {/* Infos */}
+                              <div style={sx.subjectInfo}>
+                                <span style={sx.subjectName}>
+                                  {effLabel}
+                                  {subject.hasOverrides && <span style={sx.editedDot} title="Modifié pour cette classe" />}
+                                </span>
+                                <div style={sx.chips}>
+                                  <Chip highlighted={yearSemesters.includes(subject.semesterMode)}>
+                                    {subject.semesterMode}
+                                    {subject.isReported && (
+                                      <span style={sx.reportedTag}> ↗ depuis {subject.originalSemester}</span>
+                                    )}
+                                  </Chip>
+                                  {effCredits != null && <Chip>{effCredits} cr.</Chip>}
+                                  {subject._type === "manual" && <Chip accent>Manuel</Chip>}
+                                </div>
+                              </div>
+
+                              {/* Actions édition */}
+                              {subject.active && subject.classSubject && (
+                                <div style={sx.rowBtns}>
+                                  <IconBtn title="Modifier (intitulé, code, crédits, report de semestre)" onClick={() => startEdit(subject)}>
+                                    <Edit3 size={13} />
+                                  </IconBtn>
+                                  {subject.hasOverrides && (
+                                    <IconBtn title="Réinitialiser aux valeurs du catalogue" warn
+                                      onClick={() => handleReset(subject.classSubject)}>
+                                      <RotateCcw size={13} />
+                                    </IconBtn>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </main>
+        </div>
+      </div>
+
+      {showAddModal && (
+        <AddModal
+          classId={selectedClassId} academicYear={academicYear}
+          selectedClass={selectedClass} allCycleSemesters={allCycleSemesters}
+          existingCodes={new Set(merged.map((s) => s.code))}
+          onClose={() => setShowAddModal(false)}
+          onSaved={async () => { setShowAddModal(false); await loadSubjects(); showToast("ok", "Matière ajoutée ✓"); }}
+          showToast={showToast}
+        />
+      )}
+
+      {showBulk && (
+        <BulkModal
+          subjects={merged} classId={selectedClassId} academicYear={academicYear}
+          selectedClass={selectedClass}
+          onClose={() => setShowBulk(false)}
+          onSaved={async () => { await loadSubjects(); showToast("ok", "Modifications enregistrées ✓"); }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════
+   MODAL AJOUTER
+════════════════════════════════════════════════════════ */
+function AddModal({ classId, academicYear, selectedClass, allCycleSemesters, existingCodes, onClose, onSaved, showToast }) {
+  const [tab, setTab] = useState("catalog");
+  const [search, setSearch] = useState("");
+  const [catalog, setCatalog] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    label: "", code: "",
+    semesterMode: allCycleSemesters[0]?.value || "S1",
+    moduleCode: "", moduleLabel: "", credits: "",
+  });
+
+  useEffect(() => {
+    if (!selectedClass) return;
+    setLoading(true);
+    const p = new URLSearchParams();
+    if (selectedClass.filiere) p.set("filiere", selectedClass.filiere);
+    if (selectedClass.specialiteCode) p.set("specialiteCode", selectedClass.specialiteCode);
+    if (selectedClass.optionCode) p.set("optionCode", selectedClass.optionCode);
+    if (selectedClass.cycle) p.set("cycle", selectedClass.cycle);
+    if (selectedClass.studyYear) p.set("studyYear", String(selectedClass.studyYear));
+    apiFetch(`/subjects?${p}`)
+      .then((d) => setCatalog(Array.isArray(d) ? d.filter((s) => !s.isArchived) : []))
+      .catch(() => setCatalog([]))
+      .finally(() => setLoading(false));
+  }, [selectedClass]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return catalog.filter((s) => {
+      const code = cleanStr(s.code || s.subjectCode || "");
+      if (existingCodes.has(code)) return false;
+      if (!q) return true;
+      return cleanStr(s.label).toLowerCase().includes(q) || code.toLowerCase().includes(q);
+    });
+  }, [catalog, search, existingCodes]);
+
+  const handleActivate = async (s) => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await apiFetch("/class-subjects/activate", {
+        method: "POST",
+        body: JSON.stringify({
+          classId, academicYear, subjectId: s.id,
+          label: cleanStr(s.label), code: cleanStr(s.code || s.subjectCode || ""),
+          semesterMode: cleanStr(s.semesterMode || "S1"),
+          moduleCode: cleanStr(s.moduleCode || ""), moduleLabel: cleanStr(s.moduleLabel || ""),
+          credits: s.credits ?? null,
+        }),
+      });
+      onSaved();
+    } catch (e) { showToast("err", e.message); }
+    finally { setSaving(false); }
+  };
+
+  const handleManual = async () => {
+    if (!form.label.trim() || !form.code.trim()) { showToast("err", "Intitulé et code obligatoires"); return; }
+    if (saving) return;
+    setSaving(true);
+    try {
+      const newS = await apiFetch("/subjects", {
+        method: "POST",
+        body: JSON.stringify({
+          label: form.label.trim(), code: form.code.trim(), subjectCode: form.code.trim(),
+          semesterMode: form.semesterMode, moduleCode: form.moduleCode.trim() || null,
+          moduleLabel: form.moduleLabel.trim() || null,
+          credits: form.credits !== "" ? Number(form.credits) : null,
+          filiere: selectedClass?.filiere || null, specialiteCode: selectedClass?.specialiteCode || null,
+          optionCode: selectedClass?.optionCode || null, cycle: selectedClass?.cycle || null,
+          studyYear: selectedClass?.studyYear || null,
+        }),
+      });
+      await apiFetch("/class-subjects/activate", {
+        method: "POST",
+        body: JSON.stringify({
+          classId, academicYear, subjectId: newS.id || null,
+          label: form.label.trim(), code: form.code.trim(), semesterMode: form.semesterMode,
+          moduleCode: form.moduleCode.trim() || null, moduleLabel: form.moduleLabel.trim() || null,
+          credits: form.credits !== "" ? Number(form.credits) : null,
+        }),
+      });
+      onSaved();
+    } catch (e) { showToast("err", e.message); }
+    finally { setSaving(false); }
   };
 
   return (
-    <div style={modalStyles.overlay} onMouseDown={onClose}>
-      <div style={{ ...modalStyles.modal, width: "min(1120px, 100vw)" }} onMouseDown={(e) => e.stopPropagation()}>
-        <header style={modalStyles.header}>
-          <h3 style={modalStyles.title}>Gestion rapide : Codes & Crédits</h3>
-        </header>
-
-        <div style={modalStyles.body}>
-          <p style={modalStyles.help}>Filtre par cycle/niveau/semestre, coche, modifie code/crédit, puis enregistre.</p>
-
-          {msg && (
-            <p style={{ margin: "0 0 10px", fontSize: ".85rem", color: msg.startsWith("✅") ? "#166534" : "#DC2626" }}>
-              {msg}
-            </p>
-          )}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={modalStyles.label}>Cycle *</label>
-              <select style={inputStyle} value={cycle} onChange={(e) => setCycle(e.target.value)}>
-                <option value="BTS">BTS</option>
-                <option value="LICENCE">LICENCE</option>
-                <option value="MASTER">MASTER</option>
-                <option value="INGÉNIEUR">INGÉNIEUR</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={modalStyles.label}>Niveau (optionnel)</label>
-              <select style={inputStyle} value={studyYear} onChange={(e) => setStudyYear(e.target.value)}>
-                <option value="">—</option>
-                {[1, 2, 3, 4, 5].map((y) => (
-                  <option key={y} value={String(y)}>
-                    Niveau {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={modalStyles.label}>Semestre (optionnel)</label>
-              <select style={inputStyle} value={semesterMode} onChange={(e) => setSemesterMode(e.target.value)}>
-                <option value="">—</option>
-                <option value="S1">S1</option>
-                <option value="S2">S2</option>
-                <option value="S1S2">S1 & S2</option>
-              </select>
-            </div>
+    <Overlay onClose={onClose}>
+      <div style={mx.box}>
+        <div style={mx.header}>
+          <div>
+            <div style={mx.title}>Ajouter une matière</div>
+            <div style={mx.sub}>{selectedClass?.title} · {academicYear}</div>
           </div>
-
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: ".85rem" }}>
-              <input type="checkbox" checked={allSelected} onChange={(e) => toggleAll(e.target.checked)} disabled={rows.length === 0} />
-              <span>Sélectionner tout</span>
-            </label>
-
-            <div style={{ fontSize: ".8rem", color: "#6B7280" }}>
-              {rows.length} matière(s) · <b>{selectedCount}</b> sélectionnée(s)
-            </div>
-
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ fontSize: ".8rem", color: "#6B7280" }}>Appliquer crédit aux sélectionnées :</span>
-              <input
-                type="number"
-                min="0"
-                step="0.5"
-                style={{ ...inputStyle, width: 120 }}
-                value={applyCreditValue}
-                onChange={(e) => setApplyCreditValue(e.target.value)}
-                placeholder="ex: 3"
-              />
-              <button
-                type="button"
-                onClick={applyCreditsToSelected}
-                style={{
-                  borderRadius: 999,
-                  border: "none",
-                  background: "#00b89c",
-                  color: "white",
-                  padding: "8px 12px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  fontSize: ".82rem",
-                }}
-              >
-                Appliquer
+          <button style={mx.close} onClick={onClose}><X size={15} /></button>
+        </div>
+        <div style={mx.tabs}>
+          <TabBtn active={tab === "catalog"} onClick={() => setTab("catalog")}><Package size={13} /> Depuis le catalogue</TabBtn>
+          <TabBtn active={tab === "manual"} onClick={() => setTab("manual")}><Plus size={13} /> Créer manuellement</TabBtn>
+        </div>
+        <div style={mx.body}>
+          {tab === "catalog" ? (
+            <>
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <Search size={13} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--ip-gray)" }} />
+                <input style={{ ...sx.input, paddingLeft: 32 }} placeholder="Rechercher…" value={search} onChange={(e) => setSearch(e.target.value)} />
+              </div>
+              <div style={mx.catalogList}>
+                {loading ? <div style={sx.hint}>Chargement…</div> :
+                  filtered.length === 0 ? <div style={sx.hint}>{catalog.length === 0 ? "Aucune matière dans le catalogue pour cette classe." : "Toutes les matières sont déjà ajoutées."}</div> :
+                    filtered.map((s) => (
+                      <div key={s.id} style={mx.catalogRow}>
+                        <span style={sx.codeBadge}>{cleanStr(s.code || s.subjectCode || "—")}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: "0.84rem", fontWeight: 700 }}>{cleanStr(s.label)}</div>
+                          <div style={{ fontSize: "0.71rem", color: "var(--ip-gray)", marginTop: 2 }}>
+                            {cleanStr(s.semesterMode || "S1")}
+                            {s.credits != null ? ` · ${s.credits} cr.` : ""}
+                            {s.moduleCode ? ` · UE: ${s.moduleCode}` : ""}
+                          </div>
+                        </div>
+                        <button style={sx.btnPrimary} onClick={() => handleActivate(s)} disabled={saving}>
+                          {saving ? "…" : "Activer"}
+                        </button>
+                      </div>
+                    ))}
+              </div>
+            </>
+          ) : (
+            <div>
+              <div style={mx.formGrid}>
+                <InlineField label="Intitulé *" span={2}>
+                  <input style={sx.input} value={form.label} placeholder="Ex: Comptabilité Générale I"
+                    onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))} />
+                </InlineField>
+                <InlineField label="Code ECUE *">
+                  <input style={sx.input} value={form.code} placeholder="Ex: CGE11"
+                    onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))} />
+                </InlineField>
+                <InlineField label="Semestre">
+                  <select style={sx.input} value={form.semesterMode}
+                    onChange={(e) => setForm((f) => ({ ...f, semesterMode: e.target.value }))}>
+                    {allCycleSemesters.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </InlineField>
+                <InlineField label="Crédits">
+                  <input type="number" min="0" step="0.5" style={sx.input} value={form.credits} placeholder="Ex: 3"
+                    onChange={(e) => setForm((f) => ({ ...f, credits: e.target.value }))} />
+                </InlineField>
+                <InlineField label="Code UE">
+                  <input style={sx.input} value={form.moduleCode} placeholder="Ex: UE1"
+                    onChange={(e) => setForm((f) => ({ ...f, moduleCode: e.target.value }))} />
+                </InlineField>
+                <InlineField label="Libellé UE">
+                  <input style={sx.input} value={form.moduleLabel} placeholder="Ex: Comptabilité"
+                    onChange={(e) => setForm((f) => ({ ...f, moduleLabel: e.target.value }))} />
+                </InlineField>
+              </div>
+              <button style={{ ...sx.btnPrimary, width: "100%", justifyContent: "center", marginTop: 16, height: 40 }}
+                onClick={handleManual} disabled={saving}>
+                {saving ? "Création…" : "Créer et activer pour cette classe"}
               </button>
             </div>
-          </div>
-
-          <div style={{ border: `1px solid ${colors.border}`, borderRadius: 12, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".85rem" }}>
-              <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  <th style={{ textAlign: "center", padding: "10px", borderBottom: `1px solid ${colors.border}`, width: 60 }}>✔</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: `1px solid ${colors.border}`, width: 260 }}>Spécialité</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: `1px solid ${colors.border}` }}>ECUE</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: `1px solid ${colors.border}`, width: 220 }}>Code</th>
-                  <th style={{ textAlign: "left", padding: "10px", borderBottom: `1px solid ${colors.border}`, width: 160 }}>Crédits</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} style={{ padding: 12, color: "#6B7280" }}>
-                      Aucune matière pour ce filtre.
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r) => (
-                    <tr key={r.id} style={r.selected ? { background: "#F0FDFA" } : undefined}>
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", textAlign: "center" }}>
-                        <input type="checkbox" checked={r.selected} onChange={(e) => toggleOne(r.id, e.target.checked)} />
-                      </td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>
-                        <div style={{ fontWeight: 700 }}>{r.specialite}</div>
-                        <div style={{ fontSize: ".78rem", color: "#6B7280" }}>{r.specialiteCode}</div>
-                      </td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", fontWeight: 650 }}>{r.label}</td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>
-                        <input type="text" value={r.code} onChange={(e) => update(r.id, { code: e.target.value })} placeholder="Ex: MAT101" style={inputStyle} />
-                      </td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>
-                        <input type="number" min="0" step="0.5" value={r.credits} onChange={(e) => update(r.id, { credits: e.target.value })} placeholder="Ex: 3" style={inputStyle} />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
-
-        <footer style={modalStyles.footer}>
-          <button type="button" style={modalStyles.btnGhost} onClick={onClose} disabled={saving}>
-            Fermer
-          </button>
-          <button type="button" style={modalStyles.btnPrimary} onClick={saveSelected} disabled={saving}>
-            {saving ? "Enregistrement..." : "Enregistrer sélection"}
-          </button>
-        </footer>
       </div>
-    </div>
+    </Overlay>
   );
 }
 
-/* ───────────────────────── CatalogueMiniBar (legacy) ───────────────────────── */
-function CatalogueMiniBar({ loading, total, onOpen }) {
-  return (
-    <section style={catalogStyles.card}>
-      <div style={catalogStyles.left}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={catalogStyles.iconCircle}>
-            <Hash size={16} />
-          </div>
-          <div>
-            <div style={catalogStyles.title}>Catalogue des codes (legacy)</div>
-            <div style={catalogStyles.subtitle}>Optionnel — utile si tu as déjà des codes stockés dans subjects_catalog.</div>
-          </div>
-        </div>
-
-        <p style={catalogStyles.badge}>{loading ? "Chargement du catalogue…" : `${total} code(s)`}</p>
-      </div>
-
-      <div style={catalogStyles.right}>
-        <button type="button" style={catalogStyles.btn} onClick={onOpen}>
-          <Hash size={16} />
-          <span>Ouvrir</span>
-        </button>
-      </div>
-    </section>
+/* ════════════════════════════════════════════════════════
+   MODAL GESTION RAPIDE
+════════════════════════════════════════════════════════ */
+function BulkModal({ subjects, classId, academicYear, selectedClass, onClose, onSaved, showToast }) {
+  const [rows, setRows] = useState(() =>
+    subjects.filter((s) => s.active).map((s) => ({
+      id: s.classSubject?.id,
+      code: s.classSubject?.codeOverride || s.code,
+      label: s.classSubject?.labelOverride || s.label,
+      credits: (s.classSubject?.creditsOverride ?? s.credits) != null ? String(s.classSubject?.creditsOverride ?? s.credits) : "",
+      semesterMode: s.semesterMode,
+      selected: false, origCode: s.code,
+    }))
   );
-}
+  const [bulkCredit, setBulkCredit] = useState("");
+  const [saving, setSaving] = useState(false);
 
-/* ───────────────── Tableau regroupé par salle ───────────────── */
-function MatieresGroupedBySalle({ groups, onEdit, onDelete, getCode }) {
-  if (!groups || groups.length === 0) {
-    return (
-      <section>
-        <h2 style={sheetStyles.sectionTitle}>Matières par salle</h2>
-        <div style={sheetStyles.wrapper}>
-          <p style={{ fontSize: ".8rem", color: "#6B7280" }}>Aucune matière définie pour le moment.</p>
-        </div>
-      </section>
-    );
-  }
+  const selCount = rows.filter((r) => r.selected).length;
+  const allSel = rows.length > 0 && selCount === rows.length;
 
-  return (
-    <section>
-      <div style={sheetStyles.sectionHeader}>
-        <h2 style={sheetStyles.sectionTitle}>Matières par salle</h2>
-        <p style={sheetStyles.sectionSubtitle}>Chaque bloc correspond à une salle (filière + spécialité + niveau + cycle).</p>
-      </div>
-
-      <div style={sheetStyles.wrapper}>
-        <div style={sheetStyles.groupsGrid}>
-          {groups.map((g) => {
-            const visibleSubjects = (g.subjects || []).filter((s) => {
-              // ✅ on ne cache plus rien "par erreur"
-              // si l'enregistrement existe, on l'affiche
-              return true;
-            });
-
-            return (
-              <article key={g.key} style={sheetStyles.groupCard}>
-                <header style={sheetStyles.groupHeader}>
-                  <div style={sheetStyles.groupIcon}>
-                    <BookOpen size={16} />
-                  </div>
-                  <div>
-                    <div style={sheetStyles.groupTitle}>
-                      {g.salleCode} – {g.specialite}
-                    </div>
-                    <div style={sheetStyles.groupMeta}>
-                      {g.filiere} · Niveau {g.level}
-                      {g.cycle ? ` · Cycle ${g.cycle}` : ""}
-                    </div>
-                  </div>
-                </header>
-
-                <table style={sheetStyles.table}>
-                  <thead>
-                    <tr>
-                      <th style={sheetStyles.thSmall}>ECUE</th>
-                      <th style={sheetStyles.thTiny}>Code</th>
-                      <th style={sheetStyles.thTiny}>Crédits</th>
-                      <th style={sheetStyles.thTiny}>Semestre</th>
-                      <th style={sheetStyles.thSmall}>Optionnelle</th>
-                      <th style={sheetStyles.thActions}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleSubjects.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} style={{ padding: "6px 8px", fontSize: ".8rem", color: "#9CA3AF", textAlign: "center" }}>
-                          Aucune matière définie pour cette salle.
-                        </td>
-                      </tr>
-                    ) : (
-                      visibleSubjects.map((s) => {
-                        const code = cleanStr(s.code) || cleanStr(getCode?.(s)) || "";
-                        const sem = cleanStr(s.semesterMode || s.semester || "S1");
-                        return (
-                          <tr key={s.id}>
-                            <td style={sheetStyles.tdLabel}>{displayLabelFor(s)}</td>
-
-                            <td style={sheetStyles.tdCenter}>
-                              {code ? <span style={sheetStyles.codeBadge}>{code}</span> : <span style={{ color: "#9CA3AF" }}>—</span>}
-                            </td>
-
-                            <td style={sheetStyles.tdCenter}>{s.credits != null ? s.credits : "—"}</td>
-                            <td style={sheetStyles.tdCenter}>{sem === "S1S2" ? "S1 & S2" : sem || "—"}</td>
-                            <td style={sheetStyles.tdCenter}>{s.isOptional ? "Oui" : "Non"}</td>
-
-                            <td style={sheetStyles.tdActions}>
-                              <button type="button" style={sheetStyles.iconBtn} onClick={() => onEdit(s)} title="Modifier">
-                                <Edit size={14} />
-                              </button>
-                              <button type="button" style={{ ...sheetStyles.iconBtn, color: "#DC2626" }} onClick={() => onDelete(s)} title="Supprimer">
-                                <Trash2 size={14} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </article>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ───────────────────── Modale Ajouter / Modifier ECUE ───────────────────── */
-function MatiereModal({ subject, onClose, onSave }) {
-  const isEdit = !!subject;
-
-  const [semesterMode, setSemesterMode] = useState(cleanStr(subject?.semesterMode || subject?.semester || "S1"));
-
-  const initialBase = cleanStr(subject?.baseLabel) || cleanStr(subject?.label) || cleanStr(subject?.name) || "";
-  const [baseLabel, setBaseLabel] = useState(initialBase);
-
-  const [labelS1, setLabelS1] = useState(cleanStr(subject?.labelS1));
-  const [labelS2, setLabelS2] = useState(cleanStr(subject?.labelS2));
-
-  const [code, setCode] = useState(cleanStr(subject?.code));
-  const [credits, setCredits] = useState(subject?.credits != null ? String(subject.credits) : "");
-
-  const [filiere, setFiliere] = useState(cleanStr(subject?.filiere));
-  const [specialiteParent, setSpecialiteParent] = useState("");
-  const [specialite, setSpecialite] = useState(cleanStr(subject?.specialite));
-  const [specialiteCode, setSpecialiteCode] = useState(cleanStr(subject?.specialiteCode));
-  const [option, setOption] = useState(cleanStr(subject?.option));
-  const [optionCode, setOptionCode] = useState(cleanStr(subject?.optionCode));
-
-  const [cycle, setCycle] = useState(cleanStr(subject?.cycle));
-  const [studyYear, setStudyYear] = useState(subject?.studyYear != null ? Number(subject.studyYear) : null);
-  const [isOptional, setIsOptional] = useState(!!subject?.isOptional);
-  const [error, setError] = useState("");
-
-  const currentConf = useMemo(() => (filiere ? DICT[filiere] : null), [filiere]);
-  const isIndus = currentConf?.type === "industriel";
-  const specialites = currentConf?.specialites || [];
-  const options = isIndus && specialiteParent ? currentConf.optionsBySpecialite[specialiteParent] || [] : [];
-
-  const prevFiliereRef = useRef(filiere);
-  useEffect(() => {
-    const prev = prevFiliereRef.current;
-    if (prev === filiere) return;
-    prevFiliereRef.current = filiere;
-
-    setSpecialiteParent("");
-    setSpecialite("");
-    setSpecialiteCode("");
-    setOption("");
-    setOptionCode("");
-  }, [filiere]);
-
-  useEffect(() => {
-    if (!subject) return;
-    if (subject.filiere !== "Filières industrielles") return;
-
-    const conf = DICT["Filières industrielles"];
-    if (!conf) return;
-
-    for (const [parentLabel, opts] of Object.entries(conf.optionsBySpecialite)) {
-      const found = opts.find(([label]) => label === subject.specialite);
-      if (found) {
-        const [optLabel, optCode] = found;
-
-        setFiliere("Filières industrielles");
-        setSpecialiteParent(parentLabel);
-        setSpecialite(optLabel);
-        setOption(optLabel);
-
-        setOptionCode(optCode);
-        setSpecialiteCode(optCode);
-        return;
-      }
-    }
-  }, [subject]);
-
-  const onSelectSpecialite = (value) => {
-    if (!currentConf) return;
-
-    if (isIndus) {
-      setSpecialiteParent(value);
-      setSpecialite("");
-      setSpecialiteCode("");
-      setOption("");
-      setOptionCode("");
-      return;
-    }
-
-    const entry = specialites.find(([label]) => label === value);
-    const codeS = entry ? entry[1] || "" : "";
-    setSpecialite(value);
-    setSpecialiteCode(codeS);
-    setOption("");
-    setOptionCode("");
+  const applyBulk = () => {
+    const n = Number(bulkCredit.replace(",", "."));
+    if (Number.isNaN(n)) { showToast("err", "Valeur invalide"); return; }
+    setRows((p) => p.map((r) => r.selected ? { ...r, credits: String(n) } : r));
   };
 
-  const onSelectOption = (value) => {
-    if (!isIndus || !currentConf || !specialiteParent) return;
-    const list = currentConf.optionsBySpecialite[specialiteParent] || [];
-    const entry = list.find(([label]) => label === value);
-    const codeOpt = entry ? entry[1] || "" : "";
-
-    setOption(value);
-    setOptionCode(codeOpt);
-    setSpecialite(value);
-    setSpecialiteCode(codeOpt);
-  };
-
-  const allowedYears = cycle ? CYCLE_RULES[cycle] || [] : [];
-  const pickYear = (y) => {
-    if (!allowedYears.includes(y)) return;
-    setStudyYear((prev) => (prev === y ? null : y));
-  };
-
-  useEffect(() => {
-    const base = cleanStr(baseLabel);
-    if (semesterMode !== "S1S2") return;
-    setLabelS1((prev) => (cleanStr(prev) ? prev : base ? `${base} I` : ""));
-    setLabelS2((prev) => (cleanStr(prev) ? prev : base ? `${base} II` : ""));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [semesterMode]);
-
-  const validate = () => {
-    const base = cleanStr(baseLabel);
-    if (!base) return (setError("Le nom de l’ECUE est obligatoire."), false);
-
-    if (!filiere) return (setError("La filière est obligatoire."), false);
-    if (!specialite) return (setError("La spécialité est obligatoire."), false);
-    if (!specialiteCode) return (setError("Le code spécialité (salle) est obligatoire."), false);
-    if (!cycle) return (setError("Le cycle est obligatoire."), false);
-    if (!studyYear) return (setError("L’année d’étude est obligatoire."), false);
-
-    const creditsNum = cleanStr(credits) ? Number(String(credits).replace(",", ".")) : null;
-    if (cleanStr(credits) && Number.isNaN(creditsNum)) return (setError("Le crédit doit être un nombre."), false);
-
-    if (semesterMode === "S1S2") {
-      if (!cleanStr(labelS1) || !cleanStr(labelS2)) return (setError("En S1 & S2, renseigne les intitulés S1 et S2."), false);
-    }
-
-    setError("");
-    return { creditsNum };
-  };
-
-  const submit = () => {
-    const v = validate();
-    if (!v) return;
-
-    const payload = {
-      id: subject?.id,
-
-      filiere,
-      specialite,
-      specialiteCode,
-      option: option || null,
-      optionCode: optionCode || null,
-      cycle,
-      studyYear,
-      isOptional,
-
-      semesterMode,
-      baseLabel: cleanStr(baseLabel),
-      labelS1: semesterMode === "S1S2" ? cleanStr(labelS1) : null,
-      labelS2: semesterMode === "S1S2" ? cleanStr(labelS2) : null,
-
-      code: cleanStr(code) || null,
-      credits: v.creditsNum,
-    };
-
-    onSave?.(payload);
-  };
-
-  const inputStyle = {
-    width: "100%",
-    height: 38,
-    borderRadius: 10,
-    border: `1px solid ${colors.border}`,
-    padding: "0 .7rem",
-    fontSize: ".85rem",
-    background: "var(--bg-input, #F9FAFB)",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-
-  return (
-    <div style={modalStyles.overlay} onMouseDown={onClose}>
-      <div style={modalStyles.modal} onMouseDown={(e) => e.stopPropagation()}>
-        <header style={modalStyles.header}>
-          <h3 style={modalStyles.title}>{isEdit ? "Modifier l’ECUE" : "Ajouter une ECUE"}</h3>
-        </header>
-
-        <div style={modalStyles.body}>
-          <p style={modalStyles.help}>Renseigne l’ECUE, semestre, code/crédit, et la salle.</p>
-          {error && <p style={modalStyles.error}>{error}</p>}
-
-          <div style={modalStyles.grid}>
-            <div style={modalStyles.fieldFull}>
-              <label style={modalStyles.label}>Nom de l’ECUE *</label>
-              <input
-                type="text"
-                value={baseLabel}
-                onChange={(e) => setBaseLabel(e.target.value)}
-                placeholder="Ex : Probabilité statistique inférencielle"
-                style={inputStyle}
-              />
-            </div>
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Semestre *</label>
-              <select style={inputStyle} value={semesterMode} onChange={(e) => setSemesterMode(e.target.value)}>
-                <option value="S1">S1</option>
-                <option value="S2">S2</option>
-                <option value="S1S2">S1 & S2</option>
-              </select>
-            </div>
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Crédits</label>
-              <input type="number" min="0" step="0.5" value={credits} onChange={(e) => setCredits(e.target.value)} placeholder="Ex : 2" style={inputStyle} />
-            </div>
-
-            <div style={modalStyles.fieldFull}>
-              <label style={modalStyles.label}>Code (optionnel)</label>
-              <input type="text" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex : IGL232-1" style={inputStyle} />
-            </div>
-
-            {semesterMode === "S1S2" && (
-              <>
-                <div style={modalStyles.field}>
-                  <label style={modalStyles.label}>Intitulé S1 *</label>
-                  <input type="text" value={labelS1} onChange={(e) => setLabelS1(e.target.value)} placeholder="Ex : ... I" style={inputStyle} />
-                </div>
-                <div style={modalStyles.field}>
-                  <label style={modalStyles.label}>Intitulé S2 *</label>
-                  <input type="text" value={labelS2} onChange={(e) => setLabelS2(e.target.value)} placeholder="Ex : ... II" style={inputStyle} />
-                </div>
-              </>
-            )}
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Filière *</label>
-              <select style={inputStyle} value={filiere} onChange={(e) => setFiliere(e.target.value)}>
-                <option value="">Sélectionner une filière</option>
-                <option>Filières de gestion</option>
-                <option>Filières industrielles</option>
-                <option>Filières carrières juridiques</option>
-              </select>
-            </div>
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Spécialité *</label>
-              <select
-                style={inputStyle}
-                value={isIndus ? specialiteParent : specialite}
-                onChange={(e) => onSelectSpecialite(e.target.value)}
-                disabled={!currentConf}
-              >
-                <option value="">Sélectionner une spécialité</option>
-                {specialites.map(([label]) => (
-                  <option key={label} value={label}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {isIndus && (
-              <div style={modalStyles.field}>
-                <label style={modalStyles.label}>Option (salle)</label>
-                <select style={inputStyle} value={option} onChange={(e) => onSelectOption(e.target.value)} disabled={!specialiteParent}>
-                  <option value="">Sélectionner une option</option>
-                  {options.map(([label]) => (
-                    <option key={label} value={label}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Code spécialité (salle) *</label>
-              <input type="text" value={specialiteCode} readOnly style={{ ...inputStyle, background: "#f3f4f6" }} />
-            </div>
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Cycle *</label>
-              <select
-                style={inputStyle}
-                value={cycle}
-                onChange={(e) => {
-                  setCycle(e.target.value);
-                  setStudyYear(null);
-                }}
-              >
-                <option value="">Sélectionner un cycle</option>
-                <option value="BTS">BTS</option>
-                <option value="LICENCE">LICENCE</option>
-                <option value="MASTER">MASTER</option>
-                <option value="INGÉNIEUR">INGÉNIEUR</option>
-              </select>
-            </div>
-
-            <div style={modalStyles.fieldFull}>
-              <label style={modalStyles.label}>Année d’étude *</label>
-              <div style={modalStyles.yearRow}>
-                {[1, 2, 3, 4, 5].map((y) => {
-                  const enabled = allowedYears.includes(y);
-                  const active = studyYear === y;
-                  return (
-                    <button
-                      key={y}
-                      type="button"
-                      onClick={() => pickYear(y)}
-                      disabled={!enabled}
-                      style={{
-                        ...modalStyles.yearChip,
-                        ...(enabled ? {} : modalStyles.yearChipDisabled),
-                        ...(active ? modalStyles.yearChipActive : {}),
-                      }}
-                    >
-                      {y === 1 ? "1re" : `${y}e`} Année
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div style={modalStyles.fieldFull}>
-              <label style={modalStyles.checkboxRow}>
-                <input type="checkbox" checked={isOptional} onChange={(e) => setIsOptional(e.target.checked)} style={{ marginRight: 8 }} />
-                <span>Matière optionnelle pour cette salle</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <footer style={modalStyles.footer}>
-          <button type="button" style={modalStyles.btnGhost} onClick={onClose}>
-            Annuler
-          </button>
-          <button type="button" style={modalStyles.btnPrimary} onClick={submit}>
-            {isEdit ? "Enregistrer" : "Créer"}
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-/* ───────────────────── CatalogueModal (legacy) ───────────────────── */
-function CatalogueModal({ onClose, onSaveBulk }) {
-  const [cycle, setCycle] = useState("");
-  const [studyYear, setStudyYear] = useState(1);
-
-  const [labels, setLabels] = useState([]);
-  const [loadingLabels, setLoadingLabels] = useState(false);
-
-  const [rows, setRows] = useState([]);
-  const [error, setError] = useState("");
-
-  const inputStyle = {
-    width: "100%",
-    height: 38,
-    borderRadius: 10,
-    border: `1px solid ${colors.border}`,
-    padding: "0 .7rem",
-    fontSize: ".85rem",
-    background: "var(--bg-input, #F9FAFB)",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-
-  const fetchCatalogCodes = async (y, c) => {
-    const qs = new URLSearchParams();
-    qs.set("studyYear", String(y));
-    if (c) qs.set("cycle", c);
-
-    const res = await fetch(`${API_BASE}/subjects/catalog?${qs.toString()}`);
-    const data = await res.json().catch(() => []);
-    if (!res.ok) throw new Error(data?.error || "Erreur chargement catalogue");
-
-    const map = new Map();
-    (Array.isArray(data) ? data : []).forEach((r) => {
-      const lab = (r.label || "").trim();
-      const code = (r.code || "").trim();
-      if (lab) map.set(lab, code);
-    });
-
-    return map;
-  };
-
-  const loadLabels = async (y, c) => {
-    setLoadingLabels(true);
-    setError("");
-
+  const save = async () => {
+    const toSave = rows.filter((r) => r.selected && r.id);
+    if (!toSave.length) { showToast("err", "Sélectionnez au moins une matière"); return; }
+    setSaving(true);
     try {
-      const qsLabels = new URLSearchParams();
-      qsLabels.set("studyYear", String(y));
-      if (c) qsLabels.set("cycle", c);
-
-      const resLabels = await fetch(`${API_BASE}/subjects/labels?${qsLabels.toString()}`);
-      const dataLabels = await resLabels.json().catch(() => []);
-      if (!resLabels.ok) throw new Error(dataLabels?.error || "Erreur chargement intitulés");
-
-      const list = Array.isArray(dataLabels) ? dataLabels : [];
-      setLabels(list);
-
-      const existingCodesMap = await fetchCatalogCodes(y, c);
-
-      setRows((prevRows) => {
-        const prevMap = new Map();
-        (prevRows || []).forEach((r) => {
-          const lab = (r.label || "").trim();
-          if (!lab) return;
-          prevMap.set(lab, (r.code || "").trim());
+      for (const r of toSave) {
+        await apiFetch(`/class-subjects/${r.id}/override`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            codeOverride: r.code?.trim() !== r.origCode ? (r.code?.trim() || null) : null,
+            creditsOverride: r.credits !== "" ? Number(r.credits) : null,
+          }),
         });
-
-        return list.map((lab) => {
-          const fromPrev = prevMap.get(lab);
-          if (fromPrev !== undefined && fromPrev !== "") return { label: lab, code: fromPrev };
-          const fromDb = existingCodesMap.get(lab) || "";
-          return { label: lab, code: fromDb };
-        });
-      });
-    } catch (e) {
-      setLabels([]);
-      setRows([]);
-      setError(e.message || "Erreur");
-    } finally {
-      setLoadingLabels(false);
-    }
-  };
-
-  useEffect(() => {
-    loadLabels(studyYear, cycle);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const refresh = () => loadLabels(studyYear, cycle);
-
-  const updateRowCode = (idx, code) => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, code } : r)));
-  const addEmptyRow = () => setRows((prev) => [...prev, { label: "", code: "" }]);
-  const updateRowLabel = (idx, label) => setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, label } : r)));
-  const removeRow = (idx) => setRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
-
-  const submit = () => {
-    setError("");
-
-    const items = (rows || [])
-      .map((r) => ({
-        label: (r.label || "").trim(),
-        code: (r.code || "").trim(),
-        studyYear: Number(studyYear),
-        cycle: cycle ? cycle : null,
-      }))
-      .filter((x) => x.label && x.code);
-
-    if (items.length === 0) {
-      setError("Renseigne au moins un code (au moins une ligne).");
-      return;
-    }
-
-    onSaveBulk?.(items);
+      }
+      onSaved(); onClose();
+    } catch (e) { showToast("err", e.message); }
+    finally { setSaving(false); }
   };
 
   return (
-    <div style={modalStyles.overlay} onMouseDown={onClose}>
-      <div style={{ ...modalStyles.modal, width: "min(900px, 100vw)" }} onMouseDown={(e) => e.stopPropagation()}>
-        <header style={modalStyles.header}>
-          <h3 style={modalStyles.title}>Ajouter / Modifier des codes (catalogue legacy)</h3>
-        </header>
-
-        <div style={modalStyles.body}>
-          <p style={modalStyles.help}>Choisis Niveau et Cycle, puis charge les intitulés avec leurs codes existants.</p>
-          {error && <p style={modalStyles.error}>{error}</p>}
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 10 }}>
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Niveau *</label>
-              <select style={inputStyle} value={studyYear} onChange={(e) => setStudyYear(Number(e.target.value))}>
-                {[1, 2, 3, 4, 5].map((y) => (
-                  <option key={y} value={y}>
-                    {y === 1 ? "Niveau 1" : `Niveau ${y}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div style={modalStyles.field}>
-              <label style={modalStyles.label}>Cycle (optionnel)</label>
-              <select style={inputStyle} value={cycle} onChange={(e) => setCycle(e.target.value)}>
-                <option value="">—</option>
-                <option value="BTS">BTS</option>
-                <option value="LICENCE">LICENCE</option>
-                <option value="MASTER">MASTER</option>
-                <option value="INGÉNIEUR">INGÉNIEUR</option>
-              </select>
+    <Overlay onClose={onClose}>
+      <div style={{ ...mx.box, width: "min(860px, 96vw)" }}>
+        <div style={mx.header}>
+          <div>
+            <div style={mx.title}>Gestion rapide — Codes &amp; Crédits</div>
+            <div style={mx.sub}>{selectedClass?.title} · {academicYear}</div>
+          </div>
+          <button style={mx.close} onClick={onClose}><X size={15} /></button>
+        </div>
+        <div style={mx.body}>
+          <div style={bk.toolbar}>
+            <label style={bk.checkAll}>
+              <input type="checkbox" checked={allSel} onChange={(e) => setRows((p) => p.map((r) => ({ ...r, selected: e.target.checked })))} />
+              Tout sélectionner ({rows.length})
+            </label>
+            <div style={bk.applyRow}>
+              <span style={{ fontSize: "0.79rem", color: "var(--ip-gray)", fontWeight: 700 }}>Appliquer crédit ({selCount} sél.) :</span>
+              <input type="number" min="0" step="0.5" style={{ ...sx.input, width: 88 }} value={bulkCredit} onChange={(e) => setBulkCredit(e.target.value)} placeholder="ex: 3" />
+              <button style={sx.btnSecondary} onClick={applyBulk}>Appliquer</button>
             </div>
           </div>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-            <button type="button" style={catalogStyles.smallBtn} onClick={refresh}>
-              {loadingLabels ? "Chargement…" : "Charger les intitulés"}
-            </button>
-
-            <button type="button" style={catalogStyles.smallBtnGhost} onClick={addEmptyRow}>
-              + Ajouter une ligne manuelle
-            </button>
-
-            <div style={{ marginLeft: "auto", fontSize: ".78rem", color: "#6B7280" }}>
-              {loadingLabels ? "…" : `${rows.length} ligne(s)`}
-            </div>
-          </div>
-
-          <div style={{ border: `1px solid ${colors.border}`, borderRadius: 12, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: ".85rem" }}>
+          <div style={bk.tableWrap}>
+            <table style={bk.table}>
               <thead>
-                <tr style={{ background: "#F9FAFB" }}>
-                  <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: `1px solid ${colors.border}` }}>Intitulé *</th>
-                  <th style={{ textAlign: "left", padding: "10px 10px", borderBottom: `1px solid ${colors.border}`, width: 220 }}>Code *</th>
-                  <th style={{ textAlign: "right", padding: "10px 10px", borderBottom: `1px solid ${colors.border}`, width: 80 }}>Action</th>
+                <tr>
+                  <th style={bk.th}>✔</th>
+                  <th style={bk.th}>Matière</th>
+                  <th style={bk.th}>Code</th>
+                  <th style={bk.th}>Crédits</th>
+                  <th style={bk.th}>Sem.</th>
                 </tr>
               </thead>
-
               <tbody>
                 {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} style={{ padding: 12, color: "#6B7280" }}>
-                      Aucun intitulé trouvé. Tu peux ajouter une ligne manuelle.
-                    </td>
+                  <tr><td colSpan={5} style={bk.empty}>Aucune matière activée.</td></tr>
+                ) : rows.map((r, i) => (
+                  <tr key={r.id || i} style={r.selected ? bk.rowSel : {}}>
+                    <td style={bk.td}><input type="checkbox" checked={r.selected} onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, selected: e.target.checked } : x))} /></td>
+                    <td style={{ ...bk.td, fontWeight: 600, fontSize: "0.83rem" }}>{r.label}</td>
+                    <td style={bk.td}><input style={{ ...sx.input, width: 110 }} value={r.code} onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, code: e.target.value } : x))} /></td>
+                    <td style={bk.td}><input type="number" min="0" step="0.5" style={{ ...sx.input, width: 80 }} value={r.credits} onChange={(e) => setRows((p) => p.map((x, j) => j === i ? { ...x, credits: e.target.value } : x))} /></td>
+                    <td style={{ ...bk.td, fontSize: "0.79rem", color: "var(--ip-gray)", fontWeight: 700 }}>{r.semesterMode}</td>
                   </tr>
-                ) : (
-                  rows.map((r, idx) => (
-                    <tr key={`${r.label}-${idx}`}>
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>
-                        {labels.includes(r.label) ? (
-                          <div style={{ fontWeight: 600 }}>{r.label}</div>
-                        ) : (
-                          <input
-                            type="text"
-                            value={r.label}
-                            onChange={(e) => updateRowLabel(idx, e.target.value)}
-                            placeholder="Ex : Physique Générale"
-                            style={inputStyle}
-                          />
-                        )}
-                      </td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB" }}>
-                        <input
-                          type="text"
-                          value={r.code}
-                          onChange={(e) => updateRowCode(idx, e.target.value)}
-                          placeholder="Ex : PHY11"
-                          style={inputStyle}
-                        />
-                      </td>
-
-                      <td style={{ padding: "8px 10px", borderBottom: "1px solid #E5E7EB", textAlign: "right" }}>
-                        <button type="button" onClick={() => removeRow(idx)} style={{ ...sheetStyles.iconBtn, color: "#DC2626" }} title="Supprimer la ligne">
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>
-
-          <div style={{ marginTop: 10, fontSize: ".78rem", color: "#6B7280" }}>
-            Seules les lignes avec <b>Intitulé + Code</b> seront enregistrées.
-          </div>
         </div>
-
-        <footer style={modalStyles.footer}>
-          <button type="button" style={modalStyles.btnGhost} onClick={onClose}>
-            Annuler
+        <div style={mx.footer}>
+          <button style={sx.btnGhost} onClick={onClose}>Fermer</button>
+          <button style={sx.btnPrimary} onClick={save} disabled={saving}>
+            {saving ? "Enregistrement…" : `Enregistrer (${selCount} sél.)`}
           </button>
-          <button type="button" style={modalStyles.btnPrimary} onClick={submit}>
-            Enregistrer
-          </button>
-        </footer>
+        </div>
       </div>
+    </Overlay>
+  );
+}
+
+/* ══ Micro-composants ══ */
+function Overlay({ onClose, children }) {
+  return (
+    <div style={sx.overlay} onMouseDown={onClose}>
+      <div onMouseDown={(e) => e.stopPropagation()}>{children}</div>
+    </div>
+  );
+}
+function PillBtn({ children, active, onClick }) {
+  return <button type="button" onClick={onClick} style={{ ...sx.pill, ...(active ? sx.pillOn : {}) }}>{children}</button>;
+}
+function ViewTab({ children, active, color, onClick }) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{ ...sx.viewTab, ...(active ? { ...sx.viewTabOn, ...(color ? { color, borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: color } : {}) } : {}) }}>
+      {children}
+    </button>
+  );
+}
+function TabBtn({ children, active, onClick }) {
+  return <button type="button" onClick={onClick} style={{ ...mx.tabBtn, ...(active ? mx.tabBtnOn : {}) }}>{children}</button>;
+}
+function StatBox({ n, label, color, active, onClick }) {
+  return (
+    <button type="button" onClick={onClick} style={{ ...sx.statBox, ...(active ? sx.statBoxActive : {}) }}>
+      <div style={{ ...sx.statN, ...(color ? { color } : {}) }}>{n}</div>
+      <div style={sx.statLabel}>{label}</div>
+    </button>
+  );
+}
+function Chip({ children, accent, highlighted }) {
+  return (
+    <span style={{
+      ...sx.chip,
+      ...(accent ? { color: "var(--ip-orange)", borderWidth: "1px", borderStyle: "solid", borderColor: "rgba(255,130,0,.4)" } : {}),
+      ...(highlighted ? { borderWidth: "1px", borderStyle: "solid", borderColor: "var(--ip-teal)", color: "var(--ip-teal)", background: "var(--bg-sidebar-hi)" } : {}),
+    }}>{children}</span>
+  );
+}
+function IconBtn({ children, title, warn, onClick }) {
+  return (
+    <button type="button" onClick={onClick} title={title}
+      style={{ ...sx.iconBtn, ...(warn ? sx.iconBtnWarn : {}) }}>{children}</button>
+  );
+}
+function InlineField({ label, children, span }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, ...(span ? { gridColumn: `span ${span}` } : {}) }}>
+      <label style={{ fontSize: "0.71rem", fontWeight: 800, color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</label>
+      {children}
     </div>
   );
 }
 
-/* ───────────────────── Styles ───────────────────── */
-const styles = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: `1px solid ${colors.border}`,
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
-  pageBody: { flex: 1, overflowY: "auto" },
-  container: {
-    maxWidth: "1600px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 1.5rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.5rem",
-  },
+/* ════════════════════════════════════════════════════════
+   STYLES
+════════════════════════════════════════════════════════ */
+const sx = {
+  root: { display: "grid", gridTemplateColumns: "minmax(220px,10%) 1fr", height: "100vh", background: "var(--bg-muted)", overflow: "hidden" },
+  contentArea: { display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" },
+  body: { display: "grid", gridTemplateColumns: "256px 1fr", flex: 1, minHeight: 0, overflow: "hidden" },
+
+  sidebar: { borderRight: "1px solid var(--border)", background: "var(--bg)", overflowY: "auto", display: "flex", flexDirection: "column" },
+  sideHeader: { display: "flex", alignItems: "center", gap: 7, fontSize: "0.68rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ip-gray)", padding: "14px 14px 10px", borderBottom: "1px solid var(--border)" },
+  filiereBlock: { borderBottom: "1px solid var(--border)" },
+  filiereToggle: { width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", gap: 6 },
+  filiereLeft: { display: "flex", alignItems: "center", gap: 6 },
+  filiereLabel: { fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--ip-gray)" },
+  filiereCount: { fontSize: "0.65rem", fontWeight: 800, color: "var(--ip-gray)", background: "var(--bg-muted)", padding: "1px 6px", borderRadius: 999, border: "1px solid var(--border)" },
+  classBtn: { width: "100%", display: "flex", alignItems: "center", padding: "8px 12px 8px 18px", background: "none", border: "none", cursor: "pointer", gap: 8, textAlign: "left", position: "relative" },
+  classBtnSel: { background: "var(--bg-sidebar-hi)" },
+  classActiveDot: { width: 6, height: 6, borderRadius: "50%", flexShrink: 0 },
+  classBtnContent: { flex: 1, minWidth: 0 },
+  classBtnName: { fontSize: "0.82rem", fontWeight: 700, color: "var(--fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  classBtnMeta: { fontSize: "0.68rem", color: "var(--ip-gray)", marginTop: 1 },
+  selIndicator: { position: "absolute", left: 0, top: "10%", bottom: "10%", width: 3, borderRadius: 999, background: "var(--ip-teal)" },
+
+  main: { overflowY: "auto", padding: "1.25rem 1.5rem", background: "var(--bg-muted)" },
+  mainContent: { display: "flex", flexDirection: "column", gap: 12 },
+  hint: { fontSize: "0.8rem", color: "var(--ip-gray)", fontStyle: "italic", padding: "10px 0" },
+
+  classCard: { display: "flex", alignItems: "center", gap: 16, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 18px", flexWrap: "wrap" },
+  classCardLeft: { flex: 1, minWidth: 0 },
+  classCardTitle: { fontSize: "1rem", fontWeight: 900, color: "var(--fg)" },
+  classCardMeta: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.78rem", color: "var(--ip-gray)", marginTop: 3, flexWrap: "wrap" },
+  metaDot: { width: 3, height: 3, borderRadius: "50%", background: "var(--ip-gray)", flexShrink: 0 },
+  inactivePill: { background: "rgba(255,130,0,.1)", color: "var(--ip-orange)", border: "1px solid rgba(255,130,0,.4)", borderRadius: 999, padding: "1px 8px", fontSize: "0.68rem", fontWeight: 800 },
+  classCardActions: { display: "flex", gap: 8 },
+
+  statsRow: { display: "flex", gap: 6 },
+  statBox: { display: "flex", flexDirection: "column", alignItems: "center", background: "var(--bg-muted)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)", borderRadius: 10, padding: "8px 14px", minWidth: 70, cursor: "pointer" },
+  statBoxActive: { background: "var(--bg-sidebar-hi)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--ip-teal)" },
+  statN: { fontSize: "1.3rem", fontWeight: 900, lineHeight: 1, color: "var(--fg)" },
+  statLabel: { fontSize: "0.6rem", fontWeight: 800, color: "var(--ip-gray)", marginTop: 3, textTransform: "uppercase", letterSpacing: "0.04em" },
+
+  /* Onglets vue */
+  tabsRow: { display: "flex", borderBottom: "2px solid var(--border)", gap: 0 },
+  viewTab: { display: "inline-flex", alignItems: "center", gap: 6, height: 38, padding: "0 16px", borderWidth: 0, borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: "transparent", background: "transparent", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "var(--ip-gray)", marginBottom: -2 },
+  viewTabOn: { borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: "var(--ip-teal)", color: "var(--ip-teal)", fontWeight: 900 },
+
+  filtersBar: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" },
+  searchBox: { position: "relative", flex: "1 1 200px" },
+  searchIco: { position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--ip-gray)", pointerEvents: "none" },
+  searchInput: { width: "100%", height: 34, borderRadius: 999, border: "1px solid var(--border)", padding: "0 30px 0 32px", fontSize: "0.82rem", background: "var(--bg)", color: "var(--fg)", outline: "none", boxSizing: "border-box" },
+  clearBtn: { position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", cursor: "pointer", color: "var(--ip-gray)", display: "flex", padding: 2 },
+  semRow: { display: "flex", gap: 4, flexWrap: "wrap" },
+  pill: { height: 28, padding: "0 10px", borderRadius: 999, borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)", background: "var(--bg)", color: "var(--fg)", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4 },
+  pillOn: { background: "var(--bg-sidebar-hi)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--ip-teal)", color: "var(--ip-teal)" },
+  pillDot: { width: 5, height: 5, borderRadius: "50%", background: "var(--ip-teal)", flexShrink: 0 },
+  resultCount: { fontSize: "0.76rem", color: "var(--ip-gray)", fontWeight: 700, whiteSpace: "nowrap" },
+  semLegend: { fontSize: "0.72rem", color: "var(--ip-gray)", display: "flex", alignItems: "center", gap: 5 },
+  semLegendDot: { width: 5, height: 5, borderRadius: "50%", background: "var(--ip-teal)", flexShrink: 0 },
+
+  group: { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 12, overflow: "hidden" },
+  groupHeader: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "var(--bg-muted)", borderBottom: "1px solid var(--border)" },
+  groupHeaderBtn: { display: "flex", alignItems: "center", gap: 8, flex: 1, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: "2px 0" },
+  groupHeaderLeft: { display: "flex", alignItems: "center", gap: 8 },
+  groupChevron: { color: "var(--ip-gray)", display: "flex" },
+  ueCode: { fontSize: "0.8rem", fontWeight: 900, color: "var(--ip-teal)", fontFamily: '"Courier New", monospace' },
+  ueLabel: { fontSize: "0.79rem", color: "var(--ip-gray)", fontWeight: 500 },
+  groupActions: { display: "flex", alignItems: "center", gap: 8, flexShrink: 0 },
+  groupStats: { display: "flex", alignItems: "center", gap: 4, fontSize: "0.72rem" },
+  groupStatActive: { fontWeight: 800, color: "var(--ip-teal)" },
+  groupStatTotal: { color: "var(--ip-gray)" },
+  groupActionBtn: { display: "inline-flex", alignItems: "center", gap: 4, height: 24, padding: "0 9px", borderRadius: 999, border: "1px solid var(--ip-teal)", background: "rgba(48,178,165,.08)", color: "var(--ip-teal)", fontSize: "0.7rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  groupActionBtnOff: { borderColor: "var(--border)", background: "transparent", color: "var(--ip-gray)" },
+
+  subjectRow: { display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", borderTop: "1px solid var(--border)" },
+  subjectRowOff: { background: "var(--bg-muted)" },
+  subjectRowSelected: { background: "rgba(48,178,165,.07)", borderColor: "rgba(48,178,165,.2)" },
+  activationBar: { display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, border: "2px solid var(--ip-teal)", background: "rgba(48,178,165,.06)", flexWrap: "wrap" },
+  activationBarCount: { fontSize: "0.84rem", fontWeight: 900, color: "var(--ip-teal)", flex: 1 },
+
+  /* Bouton activation — bien visible */
+  activateBtn: { display: "inline-flex", alignItems: "center", gap: 5, height: 28, padding: "0 10px", borderRadius: 999, border: "none", cursor: "pointer", fontSize: "0.74rem", fontWeight: 800, whiteSpace: "nowrap", flexShrink: 0, minWidth: 88 },
+  activateBtnOn: { background: "rgba(48,178,165,.12)", color: "var(--ip-teal)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--ip-teal)" },
+  activateBtnOff: { background: "var(--bg-muted)", color: "var(--ip-gray)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)" },
+
+  codeBadge: { fontSize: "0.69rem", fontWeight: 900, padding: "3px 8px", borderRadius: 6, background: "var(--bg-muted)", color: "var(--fg)", fontFamily: '"Courier New", monospace', borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)", flexShrink: 0, minWidth: 52, textAlign: "center" },
+  codeBadgeEdited: { borderWidth: "1px", borderStyle: "solid", borderColor: "var(--ip-orange)", color: "var(--ip-orange)", background: "rgba(255,130,0,.06)" },
+  subjectInfo: { flex: 1, minWidth: 0 },
+  subjectName: { fontSize: "0.84rem", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 },
+  editedDot: { width: 5, height: 5, borderRadius: "50%", background: "var(--ip-orange)", flexShrink: 0 },
+  chips: { display: "flex", gap: 5, marginTop: 3, flexWrap: "wrap" },
+  chip: { fontSize: "0.68rem", fontWeight: 700, padding: "1px 6px", borderRadius: 999, background: "var(--bg-muted)", color: "var(--ip-gray)", borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)" },
+  reportedTag: { color: "var(--ip-orange)", fontStyle: "italic" },
+  rowBtns: { display: "flex", gap: 5, flexShrink: 0 },
+  iconBtn: { width: 28, height: 28, borderRadius: 7, borderWidth: "1px", borderStyle: "solid", borderColor: "var(--border)", background: "var(--bg)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ip-gray)" },
+  iconBtnWarn: { borderWidth: "1px", borderStyle: "solid", borderColor: "rgba(255,130,0,.5)", color: "var(--ip-orange)", background: "rgba(255,130,0,.05)" },
+
+  editRow: { borderTop: "2px solid var(--ip-teal)", background: "rgba(48,178,165,.04)", padding: "14px 16px" },
+  editBanner: { display: "flex", alignItems: "center", gap: 7, fontSize: "0.8rem", fontWeight: 700, marginBottom: 12, color: "var(--ip-teal)", flexWrap: "wrap" },
+  editBannerNote: { fontSize: "0.73rem", color: "var(--ip-orange)", fontWeight: 600 },
+  editGrid: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 },
+  editFooter: { display: "flex", justifyContent: "flex-end", gap: 8 },
+  semReportWrap: { display: "flex", alignItems: "center", gap: 8 },
+  reportBadge: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: "0.73rem", fontWeight: 800, color: "var(--ip-orange)", background: "rgba(255,130,0,.1)", border: "1px solid rgba(255,130,0,.3)", borderRadius: 999, padding: "2px 8px", whiteSpace: "nowrap" },
+  semHint: { fontSize: "0.72rem", color: "var(--ip-gray)", marginTop: 5 },
+
+  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "4rem 2rem", textAlign: "center", flex: 1 },
+  emptyIcon: { width: 60, height: 60, borderRadius: "50%", background: "var(--bg-sidebar-hi)", display: "flex", alignItems: "center", justifyContent: "center" },
+  emptyTitle: { fontSize: "0.96rem", fontWeight: 800 },
+  emptySub: { fontSize: "0.82rem", color: "var(--ip-gray)", maxWidth: 340, lineHeight: 1.6 },
+
+  btnPrimary: { display: "inline-flex", alignItems: "center", gap: 5, height: 34, padding: "0 14px", borderRadius: 999, border: "none", background: "var(--ip-teal)", color: "#fff", fontSize: "0.81rem", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" },
+  btnSecondary: { display: "inline-flex", alignItems: "center", gap: 5, height: 34, padding: "0 14px", borderRadius: 999, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", fontSize: "0.81rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
+  btnGhost: { display: "inline-flex", alignItems: "center", gap: 5, height: 34, padding: "0 14px", borderRadius: 999, border: "1px solid var(--border)", background: "transparent", color: "var(--fg)", fontSize: "0.81rem", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" },
+  input: { width: "100%", height: 34, borderRadius: 8, border: "1px solid var(--border)", padding: "0 10px", fontSize: "0.83rem", background: "var(--bg)", color: "var(--fg)", outline: "none", boxSizing: "border-box" },
+
+  toast: { display: "flex", alignItems: "center", gap: 7, padding: "9px 13px", borderRadius: 9, fontSize: "0.82rem", fontWeight: 700, marginBottom: 6 },
+  toastOk: { background: "rgba(48,178,165,.1)", border: "1px solid var(--ip-teal)", color: "var(--ip-teal)" },
+  toastErr: { background: "rgba(212,24,61,.08)", border: "1px solid var(--danger)", color: "var(--danger)" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: "1rem" },
 };
 
-const headerStyles = {
-  card: {
-    background: "var(--bg)",
-    borderRadius: 12,
-    border: `1px solid ${colors.border}`,
-    padding: "1rem 1.25rem",
-    display: "flex",
-    gap: "1rem",
-    alignItems: "flex-start",
-  },
-  left: { flex: 1, minWidth: 0 },
-  right: { display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 0 },
-  title: { margin: 0, fontSize: "1.05rem", fontWeight: 700 },
-  subtitle: { margin: "4px 0 0", fontSize: ".85rem", color: "var(--ip-gray)" },
-  badge: {
-    marginTop: 8,
-    display: "inline-block",
-    padding: "3px 10px",
-    borderRadius: 999,
-    fontSize: ".75rem",
-    background: "#ECFEFF",
-    color: "#0369A1",
-    border: "1px solid #7DD3FC",
-  },
-  addBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "none",
-    background: "#00b89c",
-    color: "white",
-    fontSize: ".85rem",
-    fontWeight: 600,
-    cursor: "pointer",
-  },
+const mx = {
+  box: { width: "min(700px, 96vw)", maxHeight: "88vh", background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,.22)", display: "flex", flexDirection: "column", overflow: "hidden" },
+  header: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "16px 20px 12px", borderBottom: "1px solid var(--border)" },
+  title: { fontSize: "0.94rem", fontWeight: 900 },
+  sub: { fontSize: "0.76rem", color: "var(--ip-gray)", marginTop: 2 },
+  close: { border: "1px solid var(--border)", background: "none", width: 30, height: 30, borderRadius: 8, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ip-gray)", flexShrink: 0 },
+  tabs: { display: "flex", borderBottom: "1px solid var(--border)", padding: "0 20px" },
+  tabBtn: { display: "inline-flex", alignItems: "center", gap: 6, height: 40, padding: "0 14px", borderWidth: 0, borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: "transparent", background: "none", cursor: "pointer", fontSize: "0.82rem", fontWeight: 700, color: "var(--ip-gray)", marginBottom: -1 },
+  tabBtnOn: { borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: "var(--ip-teal)", color: "var(--ip-teal)" },
+  body: { flex: 1, overflowY: "auto", padding: "16px 20px" },
+  footer: { padding: "12px 20px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 8 },
+  catalogList: { display: "flex", flexDirection: "column", gap: 5, maxHeight: 360, overflowY: "auto" },
+  catalogRow: { display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", borderRadius: 9, border: "1px solid var(--border)" },
+  formGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
 };
 
-const bulkStyles = {
-  card: {
-    background: "var(--bg)",
-    borderRadius: 12,
-    border: `1px solid ${colors.border}`,
-    padding: "1rem 1.25rem",
-    display: "flex",
-    gap: "1rem",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  left: { display: "flex", flexDirection: "column", gap: 6, minWidth: 0 },
-  right: { display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 0 },
-  title: { margin: 0, fontSize: ".95rem", fontWeight: 800 },
-  subtitle: { margin: 0, fontSize: ".82rem", color: "var(--ip-gray)" },
-  btn: {
-    borderRadius: 999,
-    border: "none",
-    background: "#0EA5E9",
-    color: "white",
-    padding: "8px 14px",
-    fontWeight: 800,
-    cursor: "pointer",
-    fontSize: ".85rem",
-  },
-};
-
-const catalogStyles = {
-  card: {
-    background: "var(--bg)",
-    borderRadius: 12,
-    border: `1px solid ${colors.border}`,
-    padding: "1rem 1.25rem",
-    display: "flex",
-    gap: "1rem",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  left: { display: "flex", flexDirection: "column", gap: 8, minWidth: 0 },
-  right: { display: "flex", alignItems: "center", justifyContent: "flex-end", minWidth: 0 },
-  title: { margin: 0, fontSize: ".95rem", fontWeight: 800 },
-  subtitle: { margin: 0, fontSize: ".82rem", color: "var(--ip-gray)" },
-  badge: {
-    display: "inline-block",
-    padding: "3px 10px",
-    borderRadius: 999,
-    fontSize: ".75rem",
-    background: "#F0FDF4",
-    color: "#166534",
-    border: "1px solid #86EFAC",
-    width: "fit-content",
-  },
-  iconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    background: "#F0F9FF",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#0369A1",
-    border: "1px solid #BAE6FD",
-    flex: "0 0 auto",
-  },
-  btn: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    padding: "8px 14px",
-    borderRadius: 999,
-    border: "none",
-    background: "#0EA5E9",
-    color: "white",
-    fontSize: ".85rem",
-    fontWeight: 700,
-    cursor: "pointer",
-  },
-  smallBtn: {
-    borderRadius: 999,
-    border: "none",
-    background: "#00b89c",
-    color: "white",
-    padding: "8px 12px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: ".82rem",
-  },
-  smallBtnGhost: {
-    borderRadius: 999,
-    border: `1px solid ${colors.border}`,
-    background: "transparent",
-    padding: "8px 12px",
-    fontWeight: 700,
-    cursor: "pointer",
-    fontSize: ".82rem",
-  },
-};
-
-const sheetStyles = {
-  sectionHeader: { marginBottom: "0.5rem" },
-  sectionTitle: { margin: 0, fontSize: ".9rem", fontWeight: 600, color: "var(--ip-gray)" },
-  sectionSubtitle: { margin: "4px 0 0", fontSize: ".8rem", color: "#6B7280" },
-  wrapper: {
-    marginTop: "0.5rem",
-    padding: "0.75rem",
-    background: "#E5E7EB",
-    borderRadius: 12,
-    overflowX: "auto",
-  },
-  groupsGrid: { display: "flex", flexDirection: "column", gap: 16 },
-  groupCard: {
-    background: "#fff",
-    borderRadius: 12,
-    border: "1px solid #D1D5DB",
-    padding: "0.75rem 0.75rem 0.9rem",
-  },
-  groupHeader: { display: "flex", gap: 10, alignItems: "center", marginBottom: 8 },
-  groupIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    background: "#ECFEFF",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    color: "#0F766E",
-  },
-  groupTitle: { fontSize: ".9rem", fontWeight: 600 },
-  groupMeta: { fontSize: ".75rem", color: "#6B7280" },
-  table: { width: "100%", borderCollapse: "collapse", marginTop: 4, fontSize: ".8rem" },
-  thSmall: { borderBottom: "1px solid #D1D5DB", padding: "4px 6px", textAlign: "center" },
-  thTiny: { borderBottom: "1px solid #D1D5DB", padding: "4px 4px", textAlign: "center", width: 90 },
-  thActions: { borderBottom: "1px solid #D1D5DB", padding: "4px 4px", textAlign: "right", width: 80 },
-  tdLabel: { borderBottom: "1px solid #E5E7EB", padding: "4px 6px" },
-  tdCenter: { borderBottom: "1px solid #E5E7EB", padding: "4px 4px", textAlign: "center" },
-  tdActions: { borderBottom: "1px solid #E5E7EB", padding: "4px 4px", textAlign: "right", whiteSpace: "nowrap" },
-  iconBtn: { border: "none", background: "transparent", cursor: "pointer", padding: 2, marginLeft: 4, color: "#4B5563" },
-  codeBadge: {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 999,
-    fontSize: ".75rem",
-    fontWeight: 800,
-    background: "#EFF6FF",
-    border: "1px solid #BFDBFE",
-    color: "#1D4ED8",
-  },
-};
-
-const modalStyles = {
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,.35)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "1rem",
-    zIndex: 80,
-  },
-  modal: {
-    width: "min(780px, 100vw)",
-    maxHeight: "92vh",
-    background: "var(--bg)",
-    color: "var(--fg)",
-    borderRadius: 12,
-    border: `1px solid ${colors.border}`,
-    boxShadow: "0 18px 35px rgba(0,0,0,.18)",
-    display: "flex",
-    flexDirection: "column",
-  },
-  header: { padding: "14px 18px", borderBottom: `1px solid ${colors.border}` },
-  title: { margin: 0, fontSize: "1.05rem", fontWeight: 600 },
-  body: { padding: "10px 18px 14px", overflowY: "auto" },
-  help: { margin: "0 0 10px", fontSize: ".85rem", color: "var(--ip-gray)" },
-  error: { margin: "0 0 10px", fontSize: ".8rem", color: "#DC2626" },
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", columnGap: 12, rowGap: 10 },
-  field: { display: "flex", flexDirection: "column", gap: 4 },
-  fieldFull: { gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 4 },
-  label: { fontSize: ".8rem", fontWeight: 600 },
-  footer: {
-    padding: "10px 18px 14px",
-    borderTop: `1px solid ${colors.border}`,
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: 8,
-  },
-  btnGhost: {
-    background: "transparent",
-    border: `1px solid ${colors.border}`,
-    color: "inherit",
-    borderRadius: 999,
-    padding: ".45rem .9rem",
-    cursor: "pointer",
-    fontSize: ".85rem",
-  },
-  btnPrimary: {
-    background: "#00b89c",
-    border: "none",
-    color: "#fff",
-    borderRadius: 999,
-    padding: ".45rem 1.1rem",
-    cursor: "pointer",
-    fontSize: ".85rem",
-    fontWeight: 600,
-  },
-  yearRow: { display: "flex", gap: 8, flexWrap: "wrap" },
-  yearChip: {
-    height: 32,
-    padding: "0 12px",
-    borderRadius: 9999,
-    background: "var(--bg-input)",
-    border: "1px solid var(--border)",
-    color: "inherit",
-    cursor: "pointer",
-    fontSize: ".8rem",
-  },
-  yearChipActive: { background: "var(--ip-teal)", color: "var(--on-color)", borderColor: "var(--ip-teal)" },
-  yearChipDisabled: { opacity: 0.45, cursor: "not-allowed" },
-  checkboxRow: { display: "flex", alignItems: "center", fontSize: ".85rem" },
+const bk = {
+  toolbar: { display: "flex", alignItems: "center", gap: 14, paddingBottom: 12, borderBottom: "1px solid var(--border)", marginBottom: 12, flexWrap: "wrap" },
+  checkAll: { display: "flex", alignItems: "center", gap: 6, fontSize: "0.82rem", fontWeight: 700, cursor: "pointer", userSelect: "none" },
+  applyRow: { display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", flexWrap: "wrap" },
+  tableWrap: { border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" },
+  th: { background: "var(--bg-muted)", padding: "9px 11px", textAlign: "left", fontWeight: 800, fontSize: "0.68rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--ip-gray)", borderBottom: "1px solid var(--border)" },
+  td: { padding: "7px 11px", borderBottom: "1px solid var(--border)", verticalAlign: "middle" },
+  rowSel: { background: "rgba(48,178,165,.05)" },
+  empty: { padding: "14px", color: "var(--ip-gray)", fontStyle: "italic", textAlign: "center" },
 };
