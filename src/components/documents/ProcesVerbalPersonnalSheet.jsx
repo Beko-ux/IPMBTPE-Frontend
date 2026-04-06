@@ -1,5 +1,4 @@
 // src/components/documents/ProcesVerbalPersonnalSheet.jsx
-
 import React, { useEffect, useMemo, useState } from "react";
 import ProcesVerbalSheetA4 from "./ProcesVerbalSheetA4.jsx";
 import ProcesVerbalSheetA3 from "./ProcesVerbalSheetA3.jsx";
@@ -12,6 +11,15 @@ const SEMESTERS = ["S1", "S2"];
 const SESSIONS = ["Principale", "Rattrapage"];
 
 const cleanStr = (x) => (x ?? "").toString().trim();
+
+function relativeToAbsolute(relativeSemester, studyYear) {
+  const y = Number(studyYear);
+  if (isNaN(y) || y < 1) return relativeSemester;
+  const base = (y - 1) * 2;
+  if (relativeSemester === "S1") return `S${base + 1}`;
+  if (relativeSemester === "S2") return `S${base + 2}`;
+  return relativeSemester;
+}
 
 async function fetchJsonFirstOk(urls) {
   let lastErr = null;
@@ -44,6 +52,9 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
   const [loadingMatrix, setLoadingMatrix] = useState(false);
 
   const [paperFormat, setPaperFormat] = useState("A4");
+
+  // ✅ Deux signatures : DAAC toujours présente, Coordonnateur optionnel
+  const [showCoordinator, setShowCoordinator] = useState(false);
 
   const [delib, setDelib] = useState({
     missingPolicy: "mirror",
@@ -80,6 +91,10 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
     () => classes.find((c) => c.id === selectedClassId) || null,
     [classes, selectedClassId]
   );
+
+  const absoluteSemester = useMemo(() => {
+    return relativeToAbsolute(semester, selectedClass?.studyYear);
+  }, [semester, selectedClass]);
 
   const classFullName =
     selectedClass?.title || selectedClass?.abbrev || selectedClass?.id || "";
@@ -178,6 +193,11 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
                     </option>
                   ))}
                 </select>
+                {selectedClass?.studyYear && (
+                  <div style={{ fontSize: ".7rem", color: "#6B7280", marginTop: 2 }}>
+                    (absolu : {absoluteSemester})
+                  </div>
+                )}
               </div>
 
               <div style={styles.fieldGroup}>
@@ -326,6 +346,18 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
                     </div>
                   )}
                 </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <label style={styles.label}>
+                    <input
+                      type="checkbox"
+                      checked={showCoordinator}
+                      onChange={(e) => setShowCoordinator(e.target.checked)}
+                      style={{ marginRight: 6 }}
+                    />
+                    Ajouter la signature du Coordonnateur des Licences / Masters
+                  </label>
+                </div>
               </div>
 
               <div style={{ marginTop: 14, fontSize: ".78rem", color: "#6B7280" }}>
@@ -342,11 +374,12 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
                 matrix={matrix}
                 loadingMatrix={loadingMatrix}
                 academicYear={academicYear}
-                semester={semester}
+                semester={absoluteSemester}
                 session={session}
                 classFullName={classFullName}
                 selectedClass={selectedClass}
                 delib={delib}
+                showCoordinator={showCoordinator}
                 onClose={onClose}
               />
             ) : (
@@ -354,11 +387,12 @@ export default function ProcesVerbalPersonnalSheet({ onClose }) {
                 matrix={matrix}
                 loadingMatrix={loadingMatrix}
                 academicYear={academicYear}
-                semester={semester}
+                semester={absoluteSemester}
                 session={session}
                 classFullName={classFullName}
                 selectedClass={selectedClass}
                 delib={delib}
+                showCoordinator={showCoordinator}
                 onClose={onClose}
               />
             )}

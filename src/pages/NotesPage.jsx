@@ -2,7 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
+import SemesterSelector from "../components/SemesterSelector";
 import { Printer, Lock, LockOpen, BarChart2, Download, Shield, User } from "lucide-react";
+import { getSemesterNumbers } from "../utils/semesters";
 
 const API_BASE =
   import.meta.env.VITE_API_BASE ||
@@ -33,11 +35,10 @@ function examTypeLabel(t) {
   return v || "—";
 }
 
-export default function NotesPage({ currentSection = "notes", onNavigate }) {
+export default function NotesPage({ currentSection = "notes", onNavigate, academicYear = "2025-2026" }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const [academicYear, setAcademicYear] = useState("2025-2026");
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -96,6 +97,15 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     () => classes.find((c) => c.id === selectedClassId) || null,
     [classes, selectedClassId]
   );
+
+  // ✅ Réinitialiser le semestre au premier semestre de la classe sélectionnée
+  useEffect(() => {
+    if (!selectedClass) return;
+    const studyYear = selectedClass.studyYear;
+    if (!studyYear) return;
+    const [firstSem] = getSemesterNumbers(studyYear);
+    setSemester(`S${firstSem}`);
+  }, [selectedClass?.id]);
 
   const students = selectedClass?.students || [];
   const sortedStudents = useMemo(() => {
@@ -572,7 +582,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
     }
   };
 
-  /* ========================= ✅ UNLOCK ========================= */
   const handleUnlock = async () => {
     if (!selectedClass || !selectedSubject) return alert("Choisissez d'abord la classe et la matière.");
     if (!resolvedSubjectCode) return alert("ECUE code introuvable (subjectCode).");
@@ -692,18 +701,7 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
 
               <div style={headerStyles.right}>
                 <div style={headerStyles.filtersRow}>
-                  <Field label="Année académique">
-                    <input
-                      style={inputPill}
-                      value={academicYear}
-                      onChange={(e) => {
-                        setAcademicYear(e.target.value);
-                        setSelectedClassId("");
-                        setSelectedSubjectId("");
-                      }}
-                      placeholder="Ex: 2025-2026"
-                    />
-                  </Field>
+                  {/* Champ "Année académique" supprimé car géré globalement */}
 
                   <Field label="Classe">
                     <select
@@ -721,10 +719,15 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                   </Field>
 
                   <Field label="Semestre">
-                    <select style={inputPill} value={semester} onChange={(e) => setSemester(e.target.value)} disabled={!selectedClass}>
-                      <option value="S1">S1</option>
-                      <option value="S2">S2</option>
-                    </select>
+                    <SemesterSelector
+                      studyYear={selectedClass?.studyYear}
+                      value={semester}
+                      onChange={setSemester}
+                      cycle={selectedClass?.cycle}
+                      includeAll={false}
+                      disabled={!selectedClass}
+                      style={inputPill}
+                    />
                   </Field>
 
                   <Field label="Examen">
@@ -792,7 +795,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                       <span>Exporter</span>
                     </button>
 
-                    {/* ✅ Bouton Verrouiller — visible si NON verrouillé */}
                     {!locked && (
                       <button
                         type="button"
@@ -810,7 +812,6 @@ export default function NotesPage({ currentSection = "notes", onNavigate }) {
                       </button>
                     )}
 
-                    {/* ✅ Bouton Déverrouiller — visible uniquement si verrouillé */}
                     {locked && sessionType === "main" && (
                       <button
                         type="button"
@@ -1062,7 +1063,6 @@ const styles = {
   right: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflow: "hidden", background: "#f5f6f8" },
   pageBody: { flex: 1, overflowY: "auto" },
   container: { maxWidth: "1600px", margin: "1.5rem auto", padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
-  // ✅ message verrouillé inline
   warnUnlock: { background: "#FEF9C3", border: "1px solid #FDE047", borderRadius: 8, padding: "8px 12px", color: "#854D0E" },
   inlineUnlockBtn: {
     background: "none", border: "none", color: "#B45309",
@@ -1087,9 +1087,7 @@ const headerStyles = {
   configBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "white", fontSize: ".85rem", fontWeight: 700, cursor: "default", opacity: 0.7 },
   actionsRow: { display: "flex", gap: 8, flexWrap: "wrap" },
   smallBtn: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 999, border: "1px solid var(--border)", background: "#fff", color: "#374151", fontSize: ".8rem", cursor: "default" },
-  // Verrouiller — vert
   lockBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#00b89c", color: "#fff", fontSize: ".85rem", fontWeight: 800 },
-  // ✅ Déverrouiller — orange ambre
   unlockBtn: { display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 999, border: "none", background: "#F59E0B", color: "#fff", fontSize: ".85rem", fontWeight: 800 },
 };
 

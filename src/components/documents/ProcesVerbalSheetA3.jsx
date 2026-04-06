@@ -1,4 +1,4 @@
-//   src/components/documents/ProcesVerbalSheetA3.jsx
+// src/components/documents/ProcesVerbalSheetA3.jsx
 import React, { useMemo, useState } from "react";
 import NotesHeader from "./NotesHeader.jsx";
 import {
@@ -13,17 +13,13 @@ import {
   paginateByMaxCols,
   splitStudentsIntoRowPages,
   buildPrintSheets,
-  buildSheetLegend,
   toDataUrlFromPublicPath,
-  toNumberOrNull,
-  computeNF,
   computeStudentSummary,
 } from "./procesVerbalShared.js";
 
 const LOGO_PUBLIC_PATH = "/logo-ipmbtpe.png";
 
-/** ✅ A3 séparé */
-const MAX_COLS = 46;
+const MAX_COLS_DEFAULT = 46;
 const MAX_ROWS = 30;
 const NAME_MAX_PARTS_A4_FALLBACK = 2;
 
@@ -36,9 +32,11 @@ export default function ProcesVerbalSheetA3({
   classFullName,
   selectedClass,
   delib,
+  showCoordinator = false,
 }) {
   const [busy, setBusy] = useState(false);
-  const [modulesPerPage, setModulesPerPage] = useState(4);
+  const [modulesPerPage, setModulesPerPage] = useState(3);
+  const [maxCols, setMaxCols] = useState(MAX_COLS_DEFAULT);
 
   const sortedStudents = useMemo(() => {
     const st = Array.isArray(matrix?.students) ? matrix.students : [];
@@ -54,8 +52,16 @@ export default function ProcesVerbalSheetA3({
   const valuesRaw = matrix?.values || {};
 
   const subjectsRaw = useMemo(() => {
+    const hasAnyNote = (code) =>
+      Object.values(valuesRaw).some((byStudent) => {
+        const cell = byStudent?.[code];
+        return cell != null && (cell.cc != null || cell.sn != null);
+      });
+
     const fromApi = Array.isArray(matrix?.subjects) ? matrix.subjects : [];
-    if (fromApi.length > 0) return fromApi;
+    if (fromApi.length > 0) {
+      return fromApi.filter((s) => hasAnyNote(cleanStr(s.code)));
+    }
     return inferSubjectsFromValues(valuesRaw);
   }, [matrix?.subjects, valuesRaw]);
 
@@ -66,9 +72,9 @@ export default function ProcesVerbalSheetA3({
       modules: moduleGroups.modules,
       noMod: moduleGroups.noMod,
       modulesPerPage,
-      maxCols: MAX_COLS,
+      maxCols,
     });
-  }, [moduleGroups, modulesPerPage]);
+  }, [moduleGroups, modulesPerPage, maxCols]);
 
   const studentRowPages = useMemo(
     () => splitStudentsIntoRowPages(sortedStudents, MAX_ROWS),
@@ -113,7 +119,6 @@ export default function ProcesVerbalSheetA3({
     return fmtCredit(sum ?? 0);
   };
 
-  /** Indique si un bloc est sur la dernière page de colonnes */
   const isLastColBlock = (block) => block.colPageIndex === columnPages.length - 1;
 
   const handleGeneratePdf = async () => {
@@ -135,6 +140,7 @@ export default function ProcesVerbalSheetA3({
         valuesRaw,
         delib,
         allSubjects: subjectsRaw,
+        showCoordinator,
       });
 
       const w = window.open("", "_blank");
@@ -150,9 +156,7 @@ export default function ProcesVerbalSheetA3({
     }
   };
 
-  /** Légende enrichie A3 — groupée par UE avec crédits */
   const renderSheetLegend = (sheet, keyPrefix) => {
-    // Collecter toutes les ECUE de la feuille
     const byModule = new Map();
     const noModEcues = [];
 
@@ -187,7 +191,6 @@ export default function ProcesVerbalSheetA3({
     return (
       <div style={previewStyles.legendBox}>
         <div style={previewStyles.legendTitle}>Légende des matières (ECUE)</div>
-
         {modules.map((mod) => (
           <div key={mod.moduleCode} style={previewStyles.legendModule}>
             <div style={previewStyles.legendModuleTitle}>
@@ -205,7 +208,6 @@ export default function ProcesVerbalSheetA3({
             </div>
           </div>
         ))}
-
         {noModEcues.length > 0 && (
           <div style={previewStyles.legendGrid}>
             {noModEcues.map((e) => (
@@ -238,12 +240,26 @@ export default function ProcesVerbalSheetA3({
     </div>
   );
 
+  // ✅ Footer avec signatures côte à côte (gauche / droite)
+  const footerContent = (
+    <div style={{ display: "flex", justifyContent: "space-between", width: "100%" }}>
+      <div style={{ fontWeight: "bold" }}>
+        Nom, date et signature du DAAC :
+      </div>
+      {showCoordinator && (
+        <div style={{ fontWeight: "bold" }}>
+          Nom, date et signature du coordonnateur des Licences / Masters :
+        </div>
+      )}
+    </div>
+  );
+
   const renderTableBlock = (block, pidx, bidx = 0) => {
     const showSummary = isLastColBlock(block);
     const totalExtraCols = (block.groups || []).reduce((sum, g) => sum + groupColSpan(g), 0);
     const totalCols = 3 + totalExtraCols + (showSummary ? 4 : 0);
 
-    const blockLabel = `Bloc ${bidx + 1} — Cols ${totalCols}/${MAX_COLS}, Rows ${block.students.length}/${MAX_ROWS}`;
+    const blockLabel = `Bloc ${bidx + 1} — Cols ${totalCols}/${maxCols}, Rows ${block.students.length}/${MAX_ROWS}`;
 
     return (
       <div key={`sheet-${pidx}-block-${bidx}`}>
@@ -281,7 +297,6 @@ export default function ProcesVerbalSheetA3({
                   </>
                 )}
               </tr>
-
               <tr>
                 {block.groups.map((g, gi) => (
                   <React.Fragment key={`m2-${bidx}-${gi}`}>
@@ -306,7 +321,6 @@ export default function ProcesVerbalSheetA3({
                   </React.Fragment>
                 ))}
               </tr>
-
               <tr>
                 {block.groups.map((g, gi) => (
                   <React.Fragment key={`m3-${bidx}-${gi}`}>
@@ -411,23 +425,34 @@ export default function ProcesVerbalSheetA3({
         <div style={headerPillStyles}>
           <div style={headerPillTitle}>A3 paysage</div>
           <div style={headerPillText}>
-            MAX {MAX_COLS} colonnes • MAX {MAX_ROWS} lignes • double bloc possible
+            MAX {maxCols} colonnes • MAX {MAX_ROWS} lignes • double bloc possible
           </div>
         </div>
       </div>
 
-      <div style={{ marginBottom: 12, display: "flex", gap: 12, alignItems: "center" }}>
-        <label style={{ fontSize: ".82rem", fontWeight: 800, color: "#374151" }}>
-          Modules / page
-        </label>
+      <div style={{ marginBottom: 12, display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <label style={{ fontSize: ".82rem", fontWeight: 800, color: "#374151" }}>Modules / page</label>
         <select
           value={modulesPerPage}
           onChange={(e) => setModulesPerPage(Number(e.target.value))}
           style={topSelectStyles}
         >
-          {[4, 5, 6].map((n) => (
+          {[3, 4, 5, 6].map((n) => (
             <option key={n} value={n}>
               {n}
+            </option>
+          ))}
+        </select>
+
+        <label style={{ fontSize: ".82rem", fontWeight: 800, color: "#374151" }}>Colonnes max</label>
+        <select
+          value={maxCols}
+          onChange={(e) => setMaxCols(Number(e.target.value))}
+          style={topSelectStyles}
+        >
+          {[MAX_COLS_DEFAULT, MAX_COLS_DEFAULT - 3, MAX_COLS_DEFAULT - 6].map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
         </select>
@@ -492,7 +517,7 @@ export default function ProcesVerbalSheetA3({
                 {renderSheetLegend(sheet, `sheetlegend-${pidx}`)}
                 {renderNotesLegendFooter()}
 
-                <div style={previewStyles.footerRow}>Nom, date et signature du DAAC :</div>
+                <div style={previewStyles.footerRow}>{footerContent}</div>
               </div>
             ))
           )}
@@ -512,144 +537,6 @@ function FragmentMini() {
   );
 }
 
-const headerPillStyles = {
-  display: "inline-flex", flexDirection: "column", gap: 2,
-  padding: "8px 12px", borderRadius: 12,
-  background: "#ECFDF5", border: "1px solid #A7F3D0",
-};
-const headerPillTitle = { fontSize: ".9rem", fontWeight: 900, color: "#047857" };
-const headerPillText = { fontSize: ".78rem", color: "#475569" };
-const topSelectStyles = {
-  height: 34, borderRadius: 999, border: "1px solid #D1D5DB",
-  padding: "0 0.8rem", fontSize: ".85rem", background: "#ffffff", outline: "none",
-};
-const topPrimaryBtnStyles = {
-  borderRadius: 999, border: "none", background: "#059669",
-  color: "#ffffff", padding: "0.45rem 1.1rem", fontSize: ".85rem", fontWeight: 900,
-};
-const styles = { previewWrapper: { display: "flex", justifyContent: "center" } };
-
-const previewStyles = {
-  page: {
-    width: "1588px", minHeight: "1123px", background: "#ffffff",
-    boxShadow: "0 0 0 1px #000000",
-    fontFamily: 'Arial, "Helvetica Neue", sans-serif',
-    display: "flex", flexDirection: "column", fontSize: "9.5px", paddingBottom: 10,
-  },
-  emptyBox: {
-    width: "1588px", padding: 16, border: "1px dashed #CBD5E1",
-    borderRadius: 12, background: "#fff", color: "#64748B",
-  },
-  blockSpacer: { height: 18 },
-  metaRow: {
-    display: "flex", flexWrap: "wrap", gap: "10px",
-    padding: "6px 10px 0 10px", justifyContent: "space-between", fontSize: "9.5px",
-  },
-  titleRow: {
-    textAlign: "center", fontWeight: "900", fontSize: "12px",
-    marginTop: 8, marginBottom: 6, textDecoration: "underline",
-  },
-  blockTitle: {
-    textAlign: "center", fontWeight: "900", fontSize: "10px",
-    marginTop: 4, marginBottom: 6, color: "#1F2937",
-  },
-  tableWrap: { padding: "0 10px 10px 10px", overflow: "hidden" },
-  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" },
-
-  thNum: { border: "1px solid #000", padding: "2px 3px", width: 26, textAlign: "center" },
-  thMat: { border: "1px solid #000", padding: "2px 3px", width: 130, textAlign: "center" },
-  thName: { border: "1px solid #000", padding: "2px 4px", width: 185, textAlign: "left" },
-  thModule: {
-    border: "1px solid #000", padding: "2px 4px",
-    textAlign: "center", fontWeight: 900, fontSize: "10px", background: "#F8FAFC",
-  },
-  thEcue: {
-    border: "1px solid #000", padding: "2px 4px",
-    textAlign: "center", fontWeight: 900, fontSize: "9.5px", whiteSpace: "nowrap",
-  },
-  thMini: {
-    border: "1px solid #000", padding: "2px 0",
-    textAlign: "center", width: 40, fontSize: "9px", fontWeight: 900, background: "#FFFFFF",
-  },
-  thCredit: {
-    border: "1px solid #000", padding: "2px 4px",
-    textAlign: "center", width: 40, fontSize: "9px", fontWeight: 900, background: "#F8FAFC",
-  },
-  // Colonnes récap
-  thSummary: {
-    border: "1px solid #000", padding: "2px 4px",
-    textAlign: "center", width: 44, fontSize: "9px", fontWeight: 900,
-    background: "#EDE9FE", color: "#4C1D95",
-  },
-  thDecision: {
-    border: "1px solid #000", padding: "2px 4px",
-    textAlign: "center", width: 120, fontSize: "9px", fontWeight: 900,
-    background: "#EDE9FE", color: "#4C1D95",
-  },
-
-  tdCenter: { border: "1px solid #000", padding: "2px 3px", textAlign: "center", verticalAlign: "middle" },
-  tdMono: {
-    border: "1px solid #000", padding: "2px 3px",
-    fontFamily: '"Courier New", monospace', fontSize: "10px", fontWeight: 900,
-    letterSpacing: "0.2px", textAlign: "center", verticalAlign: "middle",
-  },
-  tdNameCell: {
-    border: "1px solid #000", padding: "2px 4px",
-    verticalAlign: "middle", whiteSpace: "normal",
-    wordBreak: "break-word", overflowWrap: "anywhere", lineHeight: 1.15,
-  },
-  tdNote: {
-    border: "1px solid #000", padding: "0 2px", height: 18,
-    textAlign: "center", verticalAlign: "middle",
-    fontVariantNumeric: "tabular-nums", fontSize: "9.5px", fontWeight: 700, minWidth: 40,
-  },
-  tdCredit: {
-    border: "1px solid #000", padding: "0 2px",
-    textAlign: "center", fontWeight: 900, fontSize: "9.5px",
-  },
-  tdSummary: {
-    border: "1px solid #000", padding: "0 2px", height: 18,
-    textAlign: "center", verticalAlign: "middle",
-    fontWeight: 900, fontSize: "9.5px", background: "#F5F3FF",
-  },
-  tdDecision: {
-    border: "1px solid #000", padding: "0 3px",
-    textAlign: "center", verticalAlign: "middle",
-    fontSize: "8.5px", fontWeight: 900,
-  },
-  tdEmpty: {
-    border: "1px solid #000", padding: "10px",
-    textAlign: "center", fontStyle: "italic", color: "#6B7280",
-  },
-  trZebra: { background: "#FAFAFA" },
-
-  legendBox: {
-    marginTop: 10, border: "1px solid #CBD5E1",
-    borderRadius: 10, padding: "8px 10px", background: "#F8FAFC",
-  },
-  legendTitle: { fontWeight: 900, marginBottom: 8, fontSize: "10px" },
-  legendModule: { marginBottom: 8 },
-  legendModuleTitle: {
-    fontWeight: 900, fontSize: "9.5px", color: "#1E40AF",
-    marginBottom: 4, paddingBottom: 2, borderBottom: "1px solid #BFDBFE",
-  },
-  legendGrid: { display: "flex", flexWrap: "wrap", gap: "6px 12px", paddingLeft: 10 },
-  legendItem: { display: "flex", gap: 5, alignItems: "baseline", maxWidth: 520 },
-  legendCode: { fontWeight: 900, fontFamily: '"Courier New", monospace' },
-  legendSep: { color: "#64748B" },
-  legendLabel: { color: "#0F172A" },
-  legendCredits: { color: "#6B7280", fontStyle: "italic", fontSize: "8.5px" },
-
-  noteLegendFooter: {
-    marginTop: 8, fontSize: "9px",
-    display: "flex", flexWrap: "wrap", gap: "6px 10px",
-    alignItems: "center", padding: "0 10px",
-  },
-  noteLegendSep: { color: "#64748B" },
-
-  footerRow: { marginTop: 6, padding: "0 10px", fontSize: "10px", textAlign: "left" },
-};
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Génération HTML pour impression PDF A3
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,6 +551,7 @@ function generateProcesVerbalA3HTML({
   valuesRaw,
   delib,
   allSubjects,
+  showCoordinator,
 }) {
   const safeYear = academicYear || "—";
   const safeClassUpper = (classTitle || "—").toString().trim().toUpperCase();
@@ -671,8 +559,8 @@ function generateProcesVerbalA3HTML({
   const safeSession = session || "—";
   const vals = valuesRaw || {};
 
-  const semesterLabel =
-    String(semester).toUpperCase() === "S2" ? "SECOND SEMESTRE" : "PREMIER SEMESTRE";
+  const semNum = parseInt((semester || "S1").replace(/[^0-9]/g, ""), 10) || 1;
+  const semesterLabel = semNum % 2 === 0 ? "SECOND SEMESTRE" : "PREMIER SEMESTRE";
   const MAIN_TITLE = `PROCES VERBAL DES RESULTATS DU ${semesterLabel}`;
 
   const HEADER_TITLE_1 = "Institut Polytechnique des Métiers du Bâtiment,";
@@ -707,8 +595,7 @@ function generateProcesVerbalA3HTML({
   const applyDelibPDF = (cc, sn) => {
     const CC = numOrNull(cc);
     const SN = numOrNull(sn);
-    const hasAny = CC !== null || SN !== null;
-    if (!hasAny) return { ccAdj: null, snAdj: null, nfAdj: null };
+    if (CC === null && SN === null) return { ccAdj: null, snAdj: null, nfAdj: null };
     let ccAdj = CC;
     let snAdj = SN;
     if (delib?.manualFillEnabled) {
@@ -852,6 +739,14 @@ function generateProcesVerbalA3HTML({
       <span class="note-legend-footer__sep">•</span>
       <strong>CTO</strong> <span>Crédits totaux obtenus</span>
     </div>`;
+
+  // ✅ Footer HTML avec signatures côte à côte (gauche / droite)
+  const footerHTML = `
+    <div class="footer">
+      <div class="footer-signature">Nom, date et signature du DAAC :</div>
+      ${showCoordinator ? '<div class="footer-signature">Nom, date et signature du coordonnateur des Licences / Masters :</div>' : ''}
+    </div>
+  `;
 
   const renderBlockHTML = (block, blockIdx) => {
     const showSummary = block.colPageIndex === columnPages.length - 1;
@@ -1000,7 +895,7 @@ function generateProcesVerbalA3HTML({
         ${buildSheetLegendHTML(sheet)}
         ${noteLegendFooterHTML()}
 
-        <div class="footer">Nom, date et signature du DAAC :</div>
+        ${footerHTML}
       </div>`;
   }).join("");
 
@@ -1134,7 +1029,16 @@ function generateProcesVerbalA3HTML({
     }
     .note-legend-footer__sep { color: #64748B; }
 
-    .footer { margin-top: 8px; font-size: 10px; text-align: right; }
+    .footer {
+      margin-top: 8px;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .footer-signature {
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -1148,3 +1052,147 @@ function generateProcesVerbalA3HTML({
 </body>
 </html>`;
 }
+
+/* ── Styles preview ── */
+const headerPillStyles = {
+  display: "inline-flex", flexDirection: "column", gap: 2,
+  padding: "8px 12px", borderRadius: 12,
+  background: "#ECFDF5", border: "1px solid #A7F3D0",
+};
+const headerPillTitle = { fontSize: ".9rem", fontWeight: 900, color: "#047857" };
+const headerPillText = { fontSize: ".78rem", color: "#475569" };
+const topSelectStyles = {
+  height: 34, borderRadius: 999, border: "1px solid #D1D5DB",
+  padding: "0 0.8rem", fontSize: ".85rem", background: "#ffffff", outline: "none",
+};
+const topPrimaryBtnStyles = {
+  borderRadius: 999, border: "none", background: "#059669",
+  color: "#ffffff", padding: "0.45rem 1.1rem", fontSize: ".85rem", fontWeight: 900,
+};
+const styles = { previewWrapper: { display: "flex", justifyContent: "center" } };
+
+const previewStyles = {
+  page: {
+    width: "1588px", minHeight: "1123px", background: "#ffffff",
+    boxShadow: "0 0 0 1px #000000",
+    fontFamily: 'Arial, "Helvetica Neue", sans-serif',
+    display: "flex", flexDirection: "column", fontSize: "9.5px", paddingBottom: 10,
+  },
+  emptyBox: {
+    width: "1588px", padding: 16, border: "1px dashed #CBD5E1",
+    borderRadius: 12, background: "#fff", color: "#64748B",
+  },
+  blockSpacer: { height: 18 },
+  metaRow: {
+    display: "flex", flexWrap: "wrap", gap: "10px",
+    padding: "6px 10px 0 10px", justifyContent: "space-between", fontSize: "9.5px",
+  },
+  titleRow: {
+    textAlign: "center", fontWeight: "900", fontSize: "12px",
+    marginTop: 8, marginBottom: 6, textDecoration: "underline",
+  },
+  blockTitle: {
+    textAlign: "center", fontWeight: "900", fontSize: "10px",
+    marginTop: 4, marginBottom: 6, color: "#1F2937",
+  },
+  tableWrap: { padding: "0 10px 10px 10px", overflow: "hidden" },
+  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" },
+
+  thNum: { border: "1px solid #000", padding: "2px 3px", width: 26, textAlign: "center" },
+  thMat: { border: "1px solid #000", padding: "2px 3px", width: 130, textAlign: "center" },
+  thName: { border: "1px solid #000", padding: "2px 4px", width: 185, textAlign: "left" },
+  thModule: {
+    border: "1px solid #000", padding: "2px 4px",
+    textAlign: "center", fontWeight: 900, fontSize: "10px", background: "#F8FAFC",
+  },
+  thEcue: {
+    border: "1px solid #000", padding: "2px 4px",
+    textAlign: "center", fontWeight: 900, fontSize: "9.5px", whiteSpace: "nowrap",
+  },
+  thMini: {
+    border: "1px solid #000", padding: "2px 0",
+    textAlign: "center", width: 40, fontSize: "9px", fontWeight: 900, background: "#FFFFFF",
+  },
+  thCredit: {
+    border: "1px solid #000", padding: "2px 4px",
+    textAlign: "center", width: 40, fontSize: "9px", fontWeight: 900, background: "#F8FAFC",
+  },
+  thSummary: {
+    border: "1px solid #000", padding: "2px 4px",
+    textAlign: "center", width: 44, fontSize: "9px", fontWeight: 900,
+    background: "#EDE9FE", color: "#4C1D95",
+  },
+  thDecision: {
+    border: "1px solid #000", padding: "2px 4px",
+    textAlign: "center", width: 120, fontSize: "9px", fontWeight: 900,
+    background: "#EDE9FE", color: "#4C1D95",
+  },
+
+  tdCenter: { border: "1px solid #000", padding: "2px 3px", textAlign: "center", verticalAlign: "middle" },
+  tdMono: {
+    border: "1px solid #000", padding: "2px 3px",
+    fontFamily: '"Courier New", monospace', fontSize: "10px", fontWeight: 900,
+    letterSpacing: "0.2px", textAlign: "center", verticalAlign: "middle",
+  },
+  tdNameCell: {
+    border: "1px solid #000", padding: "2px 4px",
+    verticalAlign: "middle", whiteSpace: "normal",
+    wordBreak: "break-word", overflowWrap: "anywhere", lineHeight: 1.15,
+  },
+  tdNote: {
+    border: "1px solid #000", padding: "0 2px", height: 18,
+    textAlign: "center", verticalAlign: "middle",
+    fontVariantNumeric: "tabular-nums", fontSize: "9.5px", fontWeight: 700, minWidth: 40,
+  },
+  tdCredit: {
+    border: "1px solid #000", padding: "0 2px",
+    textAlign: "center", fontWeight: 900, fontSize: "9.5px",
+  },
+  tdSummary: {
+    border: "1px solid #000", padding: "0 2px", height: 18,
+    textAlign: "center", verticalAlign: "middle",
+    fontWeight: 900, fontSize: "9.5px", background: "#F5F3FF",
+  },
+  tdDecision: {
+    border: "1px solid #000", padding: "0 3px",
+    textAlign: "center", verticalAlign: "middle",
+    fontSize: "8.5px", fontWeight: 900,
+  },
+  tdEmpty: {
+    border: "1px solid #000", padding: "10px",
+    textAlign: "center", fontStyle: "italic", color: "#6B7280",
+  },
+  trZebra: { background: "#FAFAFA" },
+
+  legendBox: {
+    marginTop: 10, border: "1px solid #CBD5E1",
+    borderRadius: 10, padding: "8px 10px", background: "#F8FAFC",
+  },
+  legendTitle: { fontWeight: 900, marginBottom: 8, fontSize: "10px" },
+  legendModule: { marginBottom: 8 },
+  legendModuleTitle: {
+    fontWeight: 900, fontSize: "9.5px", color: "#1E40AF",
+    marginBottom: 4, paddingBottom: 2, borderBottom: "1px solid #BFDBFE",
+  },
+  legendGrid: { display: "flex", flexWrap: "wrap", gap: "6px 12px", paddingLeft: 10 },
+  legendItem: { display: "flex", gap: 5, alignItems: "baseline", maxWidth: 520 },
+  legendCode: { fontWeight: 900, fontFamily: '"Courier New", monospace' },
+  legendSep: { color: "#64748B" },
+  legendLabel: { color: "#0F172A" },
+  legendCredits: { color: "#6B7280", fontStyle: "italic", fontSize: "8.5px" },
+
+  noteLegendFooter: {
+    marginTop: 8, fontSize: "9px",
+    display: "flex", flexWrap: "wrap", gap: "6px 10px",
+    alignItems: "center", padding: "0 10px",
+  },
+  noteLegendSep: { color: "#64748B" },
+
+  footerRow: {
+    marginTop: 6,
+    padding: "0 10px",
+    fontSize: "10px",
+    display: "flex",
+    justifyContent: "space-between",
+  },
+};

@@ -319,8 +319,8 @@ export default function EditerEtudiantModal({
       classRole: student.classRole || "Aucune",
       schoolRole: student.schoolRole || "Aucune",
       registrationFeePaid: !!student.registrationFeePaid,
-      photoUrl:
-  typeof payload.photoPreview !== "undefined" ? payload.photoPreview : null,
+      // ✅ Correction : remplacer payload.photoPreview par student.photoUrl
+      photoUrl: student.photoUrl || "",
 
       livingLanguage: student.livingLanguage || "",
       bacSerie: student.bacSerie || "",

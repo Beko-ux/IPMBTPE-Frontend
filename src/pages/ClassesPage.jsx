@@ -35,8 +35,7 @@ function sanitizeFileName(name = "export") {
   );
 }
 
-/* ===== CSV (on garde pour l’instant) ===== */
-
+/* ===== CSV ===== */
 function rowsToCSV(rows) {
   if (!rows || rows.length === 0) return "";
   const headers = Object.keys(rows[0]);
@@ -49,7 +48,6 @@ function rowsToCSV(rows) {
     headers.join(";"),
     ...rows.map((r) => headers.map((h) => esc(r[h])).join(";")),
   ];
-  // BOM UTF-8 pour Excel
   return "\uFEFF" + lines.join("\n");
 }
 
@@ -68,23 +66,19 @@ function downloadCSV(filename, rows) {
 
 /* ===== PDF via print HTML ===== */
 
-/** ✅ Tri alphabétique par fullName, fallback matricule */
 function sortStudentsAlpha(list = []) {
   return [...list].sort((a, b) => {
     const na = (a.fullName || "").toString().trim().toUpperCase();
     const nb = (b.fullName || "").toString().trim().toUpperCase();
     if (na !== nb) return na.localeCompare(nb);
-
     const ma = (a.matricule || "").toString().trim().toUpperCase();
     const mb = (b.matricule || "").toString().trim().toUpperCase();
     return ma.localeCompare(mb);
   });
 }
 
-/** ✅ Entête établissement (comme vos autres fiches) */
 function getSchoolHeaderHTML() {
   const logoSrc = "/assets/ipmbtpe-logo.png";
-
   return `
     <div class="school-header">
       <div class="school-header-row">
@@ -109,14 +103,9 @@ function getSchoolHeaderHTML() {
   `;
 }
 
-/** ✅ PDF (tableau comme sur l'image) - SANS représentants + AVEC ENTÊTE */
 function exportClassToPDF(cls) {
   const allStudents = sortStudentsAlpha(cls.students || []);
-
-  // ✅ effectif exact = taille réelle de la liste
-  const effectifExact = Array.isArray(cls.students)
-    ? cls.students.length
-    : Number(cls.effectif || 0);
+  const effectifExact = Array.isArray(cls.students) ? cls.students.length : Number(cls.effectif || 0);
 
   const html = `
 <!DOCTYPE html>
@@ -134,8 +123,6 @@ function exportClassToPDF(cls) {
       padding: 0;
       background: #fff;
     }
-
-    /* ✅ entête */
     .school-header { margin-bottom: 10px; }
     .school-header-row { display:flex; align-items:flex-start; gap: 12px; }
     .school-logo img { width: 105px; height: auto; }
@@ -144,95 +131,24 @@ function exportClassToPDF(cls) {
     .school-subtitle { font-size: 10px; font-weight: 700; font-style: italic; margin-bottom: 2px; }
     .school-contact { font-size: 10px; }
     .school-underline { border-bottom: 3px solid #00b89c; margin: 6px 0 0 0; }
-
-    .card {
-      border: 1px solid #e6e8ee;
-      border-radius: 12px;
-      padding: 16px 18px;
-    }
-
-    .header {
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e6e8ee;
-    }
-
-    .title {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0;
-    }
-
-    .subtitle {
-      margin-top: 4px;
-      color: #6b7280;
-      font-size: 13px;
-    }
-
-    .pill {
-      border: 1px solid #e6e8ee;
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-weight: 700;
-      font-size: 12.5px;
-    }
-
-    .section {
-      margin-top: 14px;
-      padding-top: 10px;
-      border-top: 1px solid #f1f2f5;
-    }
-
-    .section-title {
-      font-weight: 700;
-      font-size: 13px;
-      margin-bottom: 8px;
-    }
-
-    /* ✅ tableau noir/blanc (comme l'image) */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 12px;
-    }
-    th, td {
-      border: 1px solid #000;
-      padding: 6px 8px;
-      vertical-align: middle;
-    }
-    th {
-      font-weight: 700;
-      text-align: center;
-    }
-    .col-n {
-      width: 36px;
-      text-align: center;
-    }
-    .col-mat {
-      width: 130px;
-      text-align: center;
-      font-family: "Courier New", monospace;
-      font-size: 11px;
-    }
-    .col-name {
-      text-align: left;
-    }
-
-    .empty {
-      color:#6b7280;
-      font-style: italic;
-      font-size: 12px;
-      margin-top: 8px;
-    }
+    .card { border: 1px solid #e6e8ee; border-radius: 12px; padding: 16px 18px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #e6e8ee; }
+    .title { font-size: 18px; font-weight: 700; margin: 0; }
+    .subtitle { margin-top: 4px; color: #6b7280; font-size: 13px; }
+    .pill { border: 1px solid #e6e8ee; border-radius: 999px; padding: 6px 10px; font-weight: 700; font-size: 12.5px; }
+    .section { margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f2f5; }
+    .section-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; }
+    th { font-weight: 700; text-align: center; }
+    .col-n { width: 36px; text-align: center; }
+    .col-mat { width: 130px; text-align: center; font-family: "Courier New", monospace; font-size: 11px; }
+    .col-name { text-align: left; }
+    .empty { color:#6b7280; font-style: italic; font-size: 12px; margin-top: 8px; }
   </style>
 </head>
 <body>
   ${getSchoolHeaderHTML()}
-
   <div class="card">
     <div class="header">
       <div>
@@ -243,20 +159,18 @@ function exportClassToPDF(cls) {
         <div class="pill">${cls.abbrev || "—"}</div>
       </div>
     </div>
-
     <div class="section">
       <div class="section-title">Liste complète de la classe</div>
-
       ${
         allStudents.length
           ? `
-        <table>
+         <table>
           <thead>
-            <tr>
+             <tr>
               <th class="col-n">N°</th>
               <th class="col-mat">Matricule</th>
               <th class="col-name">Noms et prénoms</th>
-            </tr>
+             </tr>
           </thead>
           <tbody>
             ${allStudents
@@ -264,22 +178,21 @@ function exportClassToPDF(cls) {
                 const full = (s.fullName || "").toString().toUpperCase();
                 const mat = (s.matricule || "").toString();
                 return `
-                  <tr>
+                   <tr>
                     <td class="col-n">${idx + 1}</td>
                     <td class="col-mat">${mat}</td>
                     <td class="col-name">${full}</td>
-                  </tr>
+                   </tr>
                 `;
               })
               .join("")}
           </tbody>
-        </table>
+         </table>
       `
           : `<div class="empty">Aucun étudiant.</div>`
       }
     </div>
   </div>
-
   <script>
     window.onload = () => {
       window.print();
@@ -300,18 +213,13 @@ function exportClassToPDF(cls) {
   w.document.close();
 }
 
-/** ✅ PDF BULK (tableau comme l'image) - SANS représentants + AVEC ENTÊTE */
 function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
   const pages = classesList.map((cls) => {
     const allStudents = sortStudentsAlpha(cls.students || []);
-    const effectifExact = Array.isArray(cls.students)
-      ? cls.students.length
-      : Number(cls.effectif || 0);
-
+    const effectifExact = Array.isArray(cls.students) ? cls.students.length : Number(cls.effectif || 0);
     return `
       <div class="page">
         ${getSchoolHeaderHTML()}
-
         <div class="card">
           <div class="header">
             <div>
@@ -320,20 +228,18 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
             </div>
             <div class="pill">${cls.abbrev || "—"}</div>
           </div>
-
           <div class="section">
             <div class="section-title">Liste complète de la classe</div>
-
             ${
               allStudents.length
                 ? `
-              <table>
+               <table>
                 <thead>
-                  <tr>
+                   <tr>
                     <th class="col-n">N°</th>
                     <th class="col-mat">Matricule</th>
                     <th class="col-name">Noms et prénoms</th>
-                  </tr>
+                   </tr>
                 </thead>
                 <tbody>
                   ${allStudents
@@ -341,22 +247,21 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
                       const full = (s.fullName || "").toString().toUpperCase();
                       const mat = (s.matricule || "").toString();
                       return `
-                        <tr>
+                         <tr>
                           <td class="col-n">${idx + 1}</td>
                           <td class="col-mat">${mat}</td>
                           <td class="col-name">${full}</td>
-                        </tr>
+                         </tr>
                       `;
                     })
                     .join("")}
                 </tbody>
-              </table>
+               </table>
             `
                 : `<div class="empty">Aucun étudiant.</div>`
             }
           </div>
         </div>
-
         <div class="page-break"></div>
       </div>
     `;
@@ -382,8 +287,6 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
       padding: 0;
       background: #fff;
     }
-
-    /* ✅ entête */
     .school-header { margin-bottom: 10px; }
     .school-header-row { display:flex; align-items:flex-start; gap: 12px; }
     .school-logo img { width: 105px; height: auto; }
@@ -392,88 +295,20 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
     .school-subtitle { font-size: 10px; font-weight: 700; font-style: italic; margin-bottom: 2px; }
     .school-contact { font-size: 10px; }
     .school-underline { border-bottom: 3px solid #00b89c; margin: 6px 0 0 0; }
-
-    .card {
-      border: 1px solid #e6e8ee;
-      border-radius: 12px;
-      padding: 16px 18px;
-      margin-bottom: 12px;
-    }
-
-    .header {
-      display:flex;
-      justify-content:space-between;
-      align-items:flex-start;
-      gap: 12px;
-      padding-bottom: 10px;
-      border-bottom: 1px solid #e6e8ee;
-    }
-
-    .title {
-      font-size: 18px;
-      font-weight: 700;
-      margin: 0;
-    }
-
-    .subtitle {
-      margin-top: 4px;
-      color: #6b7280;
-      font-size: 13px;
-    }
-
-    .pill {
-      border: 1px solid #e6e8ee;
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-weight: 700;
-      font-size: 12.5px;
-      align-self: flex-start;
-    }
-
-    .section {
-      margin-top: 14px;
-      padding-top: 10px;
-      border-top: 1px solid #f1f2f5;
-    }
-
-    .section-title {
-      font-weight: 700;
-      font-size: 13px;
-      margin-bottom: 8px;
-    }
-
-    /* ✅ tableau noir/blanc */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 8px;
-      font-size: 12px;
-    }
-    th, td {
-      border: 1px solid #000;
-      padding: 6px 8px;
-      vertical-align: middle;
-    }
-    th {
-      font-weight: 700;
-      text-align: center;
-    }
+    .card { border: 1px solid #e6e8ee; border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+    .header { display:flex; justify-content:space-between; align-items:flex-start; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid #e6e8ee; }
+    .title { font-size: 18px; font-weight: 700; margin: 0; }
+    .subtitle { margin-top: 4px; color: #6b7280; font-size: 13px; }
+    .pill { border: 1px solid #e6e8ee; border-radius: 999px; padding: 6px 10px; font-weight: 700; font-size: 12.5px; align-self: flex-start; }
+    .section { margin-top: 14px; padding-top: 10px; border-top: 1px solid #f1f2f5; }
+    .section-title { font-weight: 700; font-size: 13px; margin-bottom: 8px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 6px 8px; vertical-align: middle; }
+    th { font-weight: 700; text-align: center; }
     .col-n { width: 36px; text-align: center; }
-    .col-mat {
-      width: 130px;
-      text-align: center;
-      font-family: "Courier New", monospace;
-      font-size: 11px;
-    }
+    .col-mat { width: 130px; text-align: center; font-family: "Courier New", monospace; font-size: 11px; }
     .col-name { text-align: left; }
-
-    .empty {
-      color:#6b7280;
-      font-style: italic;
-      font-size: 12px;
-      margin-top: 8px;
-    }
-
+    .empty { color:#6b7280; font-style: italic; font-size: 12px; margin-top: 8px; }
     .page-break { page-break-after: always; }
   </style>
 </head>
@@ -499,19 +334,14 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
   w.document.close();
 }
 
-export default function ClassesPage({ currentSection = "classes", onNavigate }) {
+export default function ClassesPage({ currentSection = "classes", onNavigate, academicYear = "2025-2026" }) {
   const [classes, setClasses] = useState([]);
-  const [students, setStudents] = useState([]); // pour stats
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // année académique
-  const [academicYear, setAcademicYear] = useState("2025-2026");
 
   const [search, setSearch] = useState("");
   const [filiereFilter, setFiliereFilter] = useState("all");
   const [cycleFilter, setCycleFilter] = useState("all");
-
-  // niveau utilisé uniquement pour export multi
   const [bulkLevel, setBulkLevel] = useState("all");
 
   const loadData = async () => {
@@ -585,7 +415,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
       (s) => s.schoolRole && s.schoolRole !== "Aucune"
     ).length;
     const actifs = students.length;
-
     return { classesActives, delegates, bureau, actifs };
   }, [classes, students]);
 
@@ -594,7 +423,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
       cycleFilter === "all"
         ? classes
         : classes.filter((c) => c.cycle === cycleFilter);
-
     const uniq = new Set(base.map((c) => c.level).filter(Boolean));
     return Array.from(uniq).sort((a, b) => a.localeCompare(b));
   }, [classes, cycleFilter]);
@@ -627,7 +455,6 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
     const file = sanitizeFileName(
       `classes_${cycleFilter}_${bulkLevel}_${new Date().toISOString().slice(0, 10)}`
     );
-
     downloadCSV(`${file}.csv`, rows);
   };
 
@@ -664,17 +491,7 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
               </div>
             </header>
 
-            <section style={sx.filtersCard}>
-              <p style={sx.filtersTitle}>Année académique</p>
-              <div style={{ marginTop: 10, maxWidth: 260 }}>
-                <input
-                  style={sx.searchInput}
-                  value={academicYear}
-                  onChange={(e) => setAcademicYear(e.target.value)}
-                  placeholder="Ex: 2025-2026"
-                />
-              </div>
-            </section>
+            {/* Section Année académique supprimée – maintenant gérée globalement */}
 
             <section style={sx.statsRow}>
               <StatCard
@@ -826,8 +643,7 @@ export default function ClassesPage({ currentSection = "classes", onNavigate }) 
   );
 }
 
-/* --- composants secondaires & styles --- */
-
+/* --- composants secondaires & styles (inchangés) --- */
 function StatCard({ label, value, helper }) {
   return (
     <div style={sx.statCard}>

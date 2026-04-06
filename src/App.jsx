@@ -17,6 +17,7 @@ import ScolaritePage from "./pages/ScolaritePage";
 import AnonymatsPage from "./pages/AnonymatsPage";
 import AnonymatsSessionPage from "./pages/AnonymatsSessionPage";
 import PresencesExamensPage from "./pages/PresencesExamensPage";
+import MaterielPage from "./pages/MaterielPage";
 import "./styles/tokens.css";
 
 export default function App() {
@@ -72,5 +73,7 @@ export default function App() {
       return (
         <TableauDeBordPage currentSection="dashboard" {...commonProps} />
       );
+      case "materiel":
+  return <MaterielPage currentSection="materiel" {...commonProps} />;
   }
 }

@@ -11,6 +11,7 @@ import {
   LayoutGrid, Users, GraduationCap, BookOpen, Layers,
   FileText, PenLine, ListChecks, ClipboardCheck, ShieldCheck,
   BarChart3, Trophy, Settings, LogOut, ChevronDown,
+  Monitor,  // ← icône pour la section Matériel
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────────────────────
@@ -65,6 +66,15 @@ const NAV_SECTIONS = [
     items: [
       { key: "rapports",  Icon: BarChart3, label: "Rapports" },
       { key: "scolarite", Icon: Trophy,    label: "Scolarité" },
+    ],
+  },
+  // ✅ NOUVELLE SECTION : MATÉRIEL
+  {
+    id: "materiel",
+    label: "Matériel",
+    Icon: Monitor,
+    items: [
+      { key: "materiel", Icon: Monitor, label: "Gestion du matériel", hint: "Salles, postes, projecteurs" },
     ],
   },
 ];

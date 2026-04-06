@@ -2,8 +2,9 @@
 import { useEffect, useMemo, useState } from "react";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import { Plus, Link2, RefreshCw, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { Plus, Link2, RefreshCw, ChevronDown, ChevronRight, Wrench, Edit3, X } from "lucide-react";
 import { colors } from "../styles/theme";
+import useAppStore from "../store/useAppStore";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -19,16 +20,7 @@ function displayLabelForSubject(s) {
   return cleanStr(s?.labelS1 || s?.label || s?.name || "—");
 }
 
-// ✅ clé "classe/salle" comme MatieresPage
-function classKeyFromSubject(s) {
-  const filiere = cleanStr(s?.filiere);
-  const specialiteCode = cleanStr(s?.specialiteCode);
-  const studyYear = String(s?.studyYear ?? "");
-  const cycle = cleanStr(s?.cycle);
-  return `${filiere}::${specialiteCode}::${studyYear}::${cycle}`;
-}
-
-// ✅ parse "IGL232 : Outils Mathématiques IV"
+// parse "IGL232 : Outils Mathématiques IV"
 function parseModuleLine(line) {
   const raw = cleanStr(line);
   if (!raw) return { code: "", label: "" };
@@ -41,102 +33,135 @@ function parseModuleLine(line) {
   return { code, label: label || code };
 }
 
-export default function ModulesPage({ currentSection = "modules", onNavigate }) {
+export default function ModulesPage({ currentSection = "modules", onNavigate, academicYear = "2025-2026" }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ subjects pour construire les classes et afficher ECUE
+  // Classes depuis le backend (id = format __)
+  const [classes, setClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+
+  // Matières activées de la classe sélectionnée (class_subjects)
   const [subjects, setSubjects] = useState([]);
 
-  // ✅ modules (UE) pour la classe sélectionnée
+  // Modules (UE) pour la classe sélectionnée
   const [modules, setModules] = useState([]);
 
-  // ✅ sélection classe
+  // Sélection classe
   const [classId, setClassId] = useState("");
 
-  // ✅ création module
+  // Création module
   const [newModuleLine, setNewModuleLine] = useState("");
   const [newModuleCredits, setNewModuleCredits] = useState("");
 
-  // ✅ affectation
+  // Affectation
   const [pickedModuleCode, setPickedModuleCode] = useState("");
-  const [selected, setSelected] = useState({}); // { subjectId: true }
+  const [selected, setSelected] = useState({}); // { classSubjectId: true }
 
-  // ✅ UI: modules expand/collapse
-  const [openModules, setOpenModules] = useState({}); // { moduleCode: true }
+  // UI: modules expand/collapse
+  const [openModules, setOpenModules] = useState({});
 
-  /* ───────────────────────── DERIVED ───────────────────────── */
+  // Édition module
+  const [editingModule, setEditingModule] = useState(null);
+  const [editForm, setEditForm] = useState({ label: "", credit: "" });
 
-  // classes fabriquées comme MatieresPage
-  const classes = useMemo(() => {
-    const map = new Map();
-
-    for (const s of subjects) {
-      const filiere = cleanStr(s?.filiere) || "Filière ?";
-      const specialite = cleanStr(s?.specialite) || "Spécialité ?";
-      const specialiteCode = cleanStr(s?.specialiteCode) || "???";
-      const studyYear = Number(s?.studyYear ?? 1);
-      const cycle = cleanStr(s?.cycle) || "";
-
-      const key = `${filiere}::${specialiteCode}::${studyYear}::${cycle}`;
-
-      if (!map.has(key)) {
-        map.set(key, {
-          id: key,
-          filiere,
-          specialite,
-          specialiteCode,
-          studyYear,
-          cycle,
-          label: `${specialiteCode} — ${specialite} (N${studyYear}${cycle ? ` · ${cycle}` : ""})`,
-        });
-      }
+  /* ---------- CHARGEMENT DES CLASSES (DEPUIS /classes) ---------- */
+  const loadClasses = async () => {
+    setLoadingClasses(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
+      );
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data?.error || `GET /classes (${res.status})`);
+      setClasses(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || "Erreur chargement classes");
+      setClasses([]);
+    } finally {
+      setLoadingClasses(false);
     }
+  };
 
-    return Array.from(map.values()).sort(
-      (a, b) =>
-        a.filiere.localeCompare(b.filiere) ||
-        a.specialiteCode.localeCompare(b.specialiteCode) ||
-        String(a.studyYear).localeCompare(String(b.studyYear)) ||
-        a.cycle.localeCompare(b.cycle)
-    );
-  }, [subjects]);
+  /* ---------- CHARGEMENT DES MATIÈRES ACTIVÉES POUR UNE CLASSE ---------- */
+  const loadSubjectsForClass = async (cls) => {
+    if (!cls) {
+      setSubjects([]);
+      return;
+    }
+    try {
+      const qs = new URLSearchParams({
+        classId: cls.id,
+        academicYear,
+      });
+      const res = await fetch(`${API_BASE}/class-subjects?${qs}`);
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data?.error || `GET /class-subjects (${res.status})`);
+      setSubjects(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || "Erreur chargement ECUE");
+      setSubjects([]);
+    }
+  };
+
+  /* ---------- CHARGEMENT DES MODULES (UE) ---------- */
+  const loadModulesForClass = async (cls) => {
+    if (!cls) {
+      setModules([]);
+      return;
+    }
+    const qs = new URLSearchParams({
+      filiere: cleanStr(cls.filiere),
+      specialiteCode: cleanStr(cls.specialiteCode || cls.optionCode || ""),
+      studyYear: String(cls.studyYear),
+    });
+    if (cls.cycle) qs.set("cycle", cleanStr(cls.cycle));
+    try {
+      const res = await fetch(`${API_BASE}/modules?${qs}`);
+      const data = await res.json().catch(() => []);
+      if (!res.ok) throw new Error(data?.error || `GET /modules (${res.status})`);
+      setModules(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || "Erreur chargement UE");
+      setModules([]);
+    }
+  };
+
+  /* ---------- CHARGEMENT INITIAL ---------- */
+  useEffect(() => {
+    loadClasses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [academicYear]);
 
   const pickedClass = useMemo(
     () => classes.find((c) => c.id === classId) || null,
     [classes, classId]
   );
 
-  // subjects de la classe
-  const subjectsForClass = useMemo(() => {
-    if (!classId) return [];
-    return subjects
-      .filter((s) => classKeyFromSubject(s) === classId)
-      .slice()
-      .sort((a, b) => displayLabelForSubject(a).localeCompare(displayLabelForSubject(b)));
-  }, [subjects, classId]);
+  // ID de classe au format __ (déjà le cas dans classes.id)
+  const classIdForSubjects = useMemo(() => pickedClass?.id || "", [pickedClass]);
 
-  // ✅ ECUE non affectées (on veut TOUJOURS les voir)
+  // ---------- État des ECUE sans module ----------
   const subjectsWithoutModule = useMemo(() => {
-    return subjectsForClass.filter((s) => !cleanStr(s?.moduleCode));
-  }, [subjectsForClass]);
+    return subjects.filter((s) => !cleanStr(s.moduleCode));
+  }, [subjects]);
 
-  // map moduleCode -> ecues (subjects)
+  // Map moduleCode -> ecues (class_subjects)
   const ecuesByModule = useMemo(() => {
     const map = new Map();
-    for (const s of subjectsForClass) {
-      const moduleCode = cleanStr(s?.moduleCode);
+    for (const s of subjects) {
+      const moduleCode = cleanStr(s.moduleCode);
       if (!moduleCode) continue;
       if (!map.has(moduleCode)) map.set(moduleCode, []);
       map.get(moduleCode).push(s);
     }
-
     for (const [k, arr] of map.entries()) {
       arr.sort((a, b) => displayLabelForSubject(a).localeCompare(displayLabelForSubject(b)));
       map.set(k, arr);
     }
     return map;
-  }, [subjectsForClass]);
+  }, [subjects]);
 
   const pickedModule = useMemo(
     () => modules.find((m) => cleanStr(m.code) === cleanStr(pickedModuleCode)) || null,
@@ -147,74 +172,32 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
   const selectedCount = selectedIds.length;
 
   const allSelected = useMemo(() => {
-    if (subjectsForClass.length === 0) return false;
-    return selectedCount === subjectsForClass.length;
-  }, [subjectsForClass.length, selectedCount]);
+    if (subjects.length === 0) return false;
+    return selectedCount === subjects.length;
+  }, [subjects.length, selectedCount]);
 
-  /* ───────────────────────── LOADERS ───────────────────────── */
-
-  const loadSubjects = async () => {
-    const res = await fetch(`${API_BASE}/subjects`);
-    const data = await res.json().catch(() => []);
-    if (!res.ok) throw new Error(data?.error || `GET /subjects (${res.status})`);
-    setSubjects(Array.isArray(data) ? data : []);
-  };
-
-  const loadModulesForClass = async (cls) => {
-    if (!cls) {
-      setModules([]);
-      return;
-    }
-
-    const qs = new URLSearchParams();
-    qs.set("filiere", cleanStr(cls.filiere));
-    qs.set("specialiteCode", cleanStr(cls.specialiteCode));
-    qs.set("studyYear", String(cls.studyYear));
-    if (cls.cycle) qs.set("cycle", cleanStr(cls.cycle));
-
-    const res = await fetch(`${API_BASE}/modules?${qs.toString()}`);
-    const data = await res.json().catch(() => []);
-    if (!res.ok) throw new Error(data?.error || `GET /modules (${res.status})`);
-    setModules(Array.isArray(data) ? data : []);
-  };
-
-  const reloadAll = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      await loadSubjects();
-    } catch (e) {
-      setError(e.message || "Erreur chargement matières");
-      setSubjects([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // ---------- CHARGEMENT QUAND LA CLASSE CHANGE ----------
   useEffect(() => {
-    reloadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    // reset UI selections when class changes
+    // Réinitialiser les sélections
     setPickedModuleCode("");
     setSelected({});
     setOpenModules({});
-
+    setEditingModule(null);
     if (!pickedClass) {
       setModules([]);
+      setSubjects([]);
       return;
     }
-
     (async () => {
       setLoading(true);
       setError("");
       try {
-        await loadModulesForClass(pickedClass);
+        await Promise.all([
+          loadSubjectsForClass(pickedClass),
+          loadModulesForClass(pickedClass),
+        ]);
       } catch (e) {
-        setError(e.message || "Erreur chargement UE");
-        setModules([]);
+        setError(e.message || "Erreur");
       } finally {
         setLoading(false);
       }
@@ -222,13 +205,26 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [classId]);
 
-  /* ───────────────────────── ACTIONS ───────────────────────── */
-
+  /* ---------- ACTIONS ---------- */
   const createModule = async () => {
     if (!pickedClass) return alert("Choisis d’abord une classe.");
 
     const { code, label } = parseModuleLine(newModuleLine);
     if (!code) return alert("Renseigne le module (ex: IGL232 : Outils Mathématiques IV).");
+
+    // 🔹 Récupérer le code de spécialité/option (comme dans MatieresPage)
+    const refCode = pickedClass.optionCode || pickedClass.specialiteCode || "";
+    if (!refCode) {
+      alert("La classe sélectionnée n’a pas de code de spécialité ou option. Vérifiez les données.");
+      return;
+    }
+
+    // 🔹 Valider l'année d'étude
+    const studyYearNum = Number(pickedClass.studyYear);
+    if (isNaN(studyYearNum) || studyYearNum < 1 || studyYearNum > 5) {
+      alert(`Année d'étude invalide : "${pickedClass.studyYear}". Doit être un nombre entre 1 et 5.`);
+      return;
+    }
 
     let credit = null;
     if (cleanStr(newModuleCredits) !== "") {
@@ -247,8 +243,8 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
         credit,
         filiere: pickedClass.filiere,
         specialite: pickedClass.specialite,
-        specialiteCode: pickedClass.specialiteCode,
-        studyYear: pickedClass.studyYear,
+        specialiteCode: refCode,
+        studyYear: studyYearNum,
         cycle: pickedClass.cycle || "",
       };
 
@@ -278,7 +274,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
   const toggleAll = (checked) => {
     if (!checked) return setSelected({});
     const next = {};
-    subjectsForClass.forEach((s) => {
+    subjects.forEach((s) => {
       const id = cleanStr(s.id);
       if (id) next[id] = true;
     });
@@ -298,15 +294,30 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
     setError("");
 
     try {
+      // Récupérer les subjectId des class_subjects sélectionnés
+      const subjectIds = selectedIds
+        .map((csId) => {
+          const cs = subjects.find(s => s.id === csId);
+          return cs?.subjectId || null;
+        })
+        .filter(Boolean);
+
+      if (subjectIds.length === 0) {
+        throw new Error("Aucune ECUE valide sélectionnée (subjectId manquant)");
+      }
+
+      const classKey = `${pickedClass.filiere}::${pickedClass.specialiteCode || pickedClass.optionCode || ""}::${pickedClass.studyYear}::${pickedClass.cycle || ""}`;
+
       const res = await fetch(`${API_BASE}/modules-admin/assign-subjects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           moduleCode,
           moduleLabel: cleanStr(pickedModule?.label) || moduleCode,
-          classKey: classId,
-          subjectIds: selectedIds,
-
+          classKey,
+          classId: classIdForSubjects,
+          academicYear,
+          subjectIds,
           filiere: pickedClass.filiere,
           specialiteCode: pickedClass.specialiteCode,
           studyYear: pickedClass.studyYear,
@@ -319,8 +330,11 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
 
       setSelected({});
 
-      await loadModulesForClass(pickedClass);
-      await loadSubjects();
+      // Recharger les données de la classe
+      await Promise.all([
+        loadSubjectsForClass(pickedClass),
+        loadModulesForClass(pickedClass),
+      ]);
       setOpenModules((prev) => ({ ...prev, [moduleCode]: true }));
     } catch (e) {
       setError(e.message || "Erreur affectation");
@@ -333,6 +347,8 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
   const rebuildUE = async () => {
     if (!pickedClass) return alert("Choisis d’abord une classe.");
 
+    const classKey = `${pickedClass.filiere}::${pickedClass.specialiteCode || pickedClass.optionCode || ""}::${pickedClass.studyYear}::${pickedClass.cycle || ""}`;
+
     setLoading(true);
     setError("");
 
@@ -340,15 +356,13 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
       const res = await fetch(`${API_BASE}/modules-admin/rebuild-from-subjects`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ classKey: classId }),
+        body: JSON.stringify({ classKey }),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `POST /modules-admin/rebuild-from-subjects (${res.status})`);
 
-      // refresh after rebuild
       await loadModulesForClass(pickedClass);
-      await loadSubjects();
     } catch (e) {
       setError(e.message || "Erreur rebuild");
       alert(e.message || "Erreur rebuild");
@@ -361,8 +375,60 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
     setOpenModules((prev) => ({ ...prev, [code]: !prev[code] }));
   };
 
-  /* ───────────────────────── UI ───────────────────────── */
+  // ✏️ Édition d’un module
+  const startEditModule = (module) => {
+    const classKey = `${pickedClass.filiere}::${pickedClass.specialiteCode || pickedClass.optionCode || ""}::${pickedClass.studyYear}::${pickedClass.cycle || ""}`;
+    setEditingModule({
+      code: module.code,
+      label: module.label,
+      credit: module.credit,
+      classKey,
+    });
+    setEditForm({
+      label: module.label || "",
+      credit: module.credit != null ? String(module.credit) : "",
+    });
+  };
 
+  const saveEditModule = async () => {
+    if (!editingModule) return;
+
+    const newLabel = editForm.label.trim() || editingModule.code;
+    const newCredit = editForm.credit !== "" ? Number(editForm.credit.replace(",", ".")) : null;
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/modules-admin/${editingModule.code}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          classKey: editingModule.classKey,
+          label: newLabel,
+          credit: newCredit,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      await Promise.all([
+        loadModulesForClass(pickedClass),
+        loadSubjectsForClass(pickedClass),
+      ]);
+      setEditingModule(null);
+      setEditForm({ label: "", credit: "" });
+    } catch (e) {
+      alert(e.message || "Erreur lors de la modification du module");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelEditModule = () => {
+    setEditingModule(null);
+    setEditForm({ label: "", credit: "" });
+  };
+
+  /* ---------- RENDU ---------- */
   return (
     <div style={styles.layout}>
       <aside style={styles.left}>
@@ -374,7 +440,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
 
         <div style={styles.pageBody}>
           <div style={styles.container}>
-            {/* ───────── Class picker ───────── */}
+            {/* Class picker */}
             <section style={card.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 12 }}>
                 <div>
@@ -385,8 +451,8 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                 </div>
 
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button style={btnGhost} onClick={reloadAll} disabled={loading}>
-                    <RefreshCw size={16} /> {loading ? "Chargement..." : "Rafraîchir"}
+                  <button style={btnGhost} onClick={loadClasses} disabled={loadingClasses}>
+                    <RefreshCw size={16} /> {loadingClasses ? "Chargement..." : "Rafraîchir"}
                   </button>
                   <button style={btnGhost} onClick={rebuildUE} disabled={loading || !pickedClass} title="Reconstruire les UE depuis les ECUE déjà affectées">
                     <Wrench size={16} /> Rebuild UE
@@ -403,20 +469,22 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
               <div style={{ display: "grid", gridTemplateColumns: "520px 1fr", gap: 12, marginTop: 12 }}>
                 <div>
                   <label style={labelStyle}>Classe *</label>
-                  <select style={input} value={classId} onChange={(e) => setClassId(e.target.value)} disabled={loading}>
+                  <select style={input} value={classId} onChange={(e) => setClassId(e.target.value)} disabled={loadingClasses}>
                     <option value="">— Choisir une classe —</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
+                    {loadingClasses ? (
+                      <option value="">Chargement classes…</option>
+                    ) : (
+                      classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.title || c.abbrev || c.id}
+                        </option>
+                      ))
+                    )}
                   </select>
 
-                  {classes.length === 0 && !loading && (
+                  {classes.length === 0 && !loadingClasses && (
                     <div style={{ marginTop: 8, fontSize: ".82rem", color: "#6B7280" }}>
-                      Aucune classe trouvée car aucune matière n’a (filière + spécialité + niveau).
-                      <br />
-                      👉 Va d’abord dans <b>Matières</b> et ajoute au moins 1 ECUE avec filiere/specialiteCode/studyYear.
+                      Aucune classe trouvée pour l’année {academicYear}.
                     </div>
                   )}
                 </div>
@@ -426,7 +494,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                     {pickedClass ? (
                       <>
                         <b>{pickedClass.specialiteCode}</b> · {pickedClass.specialite} · N{pickedClass.studyYear}
-                        {pickedClass.cycle ? ` · ${pickedClass.cycle}` : ""} · {subjectsForClass.length} ECUE · {modules.length} UE
+                        {pickedClass.cycle ? ` · ${pickedClass.cycle}` : ""} · {subjects.length} ECUE · {modules.length} UE
                       </>
                     ) : (
                       "Choisis une classe"
@@ -436,7 +504,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
               </div>
             </section>
 
-            {/* ───────── Create module ───────── */}
+            {/* Create module */}
             <section style={card.card}>
               <h2 style={card.h2}>Créer une UE (Module)</h2>
               <p style={card.sub}>
@@ -468,7 +536,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
               </div>
             </section>
 
-            {/* ───────── Modules list ───────── */}
+            {/* Modules list */}
             <section style={card.card}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end", gap: 12 }}>
                 <div>
@@ -508,9 +576,9 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                     type="checkbox"
                     checked={allSelected}
                     onChange={(e) => toggleAll(e.target.checked)}
-                    disabled={!pickedClass || loading || subjectsForClass.length === 0}
+                    disabled={!pickedClass || loading || subjects.length === 0}
                   />
-                  <span>Tout sélectionner (ECUE de la classe : {subjectsForClass.length})</span>
+                  <span>Tout sélectionner (ECUE de la classe : {subjects.length})</span>
                 </label>
               </div>
 
@@ -539,7 +607,6 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
 
                     return (
                       <div key={mCode} style={moduleCard.card}>
-                        {/* ✅ PLUS DE <button> qui contient un <button> */}
                         <div
                           role="button"
                           tabIndex={0}
@@ -569,21 +636,35 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            style={{
-                              ...chipBtn,
-                              ...(pickedModuleCode === mCode ? chipBtnActive : null),
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPickedModuleCode(mCode);
-                              setOpenModules((prev) => ({ ...prev, [mCode]: true }));
-                            }}
-                            title="Sélectionner cette UE pour affectation"
-                          >
-                            {pickedModuleCode === mCode ? "UE sélectionnée" : "Sélectionner UE"}
-                          </button>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              type="button"
+                              style={chipBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startEditModule(m);
+                              }}
+                              title="Modifier le module"
+                            >
+                              <Edit3 size={14} />
+                            </button>
+
+                            <button
+                              type="button"
+                              style={{
+                                ...chipBtn,
+                                ...(pickedModuleCode === mCode ? chipBtnActive : null),
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPickedModuleCode(mCode);
+                                setOpenModules((prev) => ({ ...prev, [mCode]: true }));
+                              }}
+                              title="Sélectionner cette UE pour affectation"
+                            >
+                              {pickedModuleCode === mCode ? "UE sélectionnée" : "Sélectionner UE"}
+                            </button>
+                          </div>
                         </div>
 
                         {isOpen && (
@@ -595,6 +676,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                                 <thead>
                                   <tr>
                                     <th style={moduleCard.thSel}>Sel</th>
+                                    <th style={moduleCard.th}>Code</th>
                                     <th style={moduleCard.th}>ECUE</th>
                                     <th style={moduleCard.thCenter}>Crédits</th>
                                     <th style={moduleCard.thCenter}>Semestre</th>
@@ -606,6 +688,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                                     const label = displayLabelForSubject(s);
                                     const credits = s?.credits ?? "—";
                                     const sem = cleanStr(s?.semesterMode || s?.semester || "S1");
+                                    const code = cleanStr(s.codeOverride || s.code || "—");
 
                                     return (
                                       <tr key={id}>
@@ -615,6 +698,9 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                                             checked={!!selected[id]}
                                             onChange={() => toggleOne(id)}
                                           />
+                                        </td>
+                                        <td style={{ ...moduleCard.td, fontFamily: '"Courier New", monospace', fontWeight: 700, fontSize: ".78rem", whiteSpace: "nowrap" }}>
+                                          {code}
                                         </td>
                                         <td style={moduleCard.td}>{label}</td>
                                         <td style={moduleCard.tdCenter}>{credits}</td>
@@ -633,7 +719,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                 )}
               </div>
 
-              {/* ✅ SECTION ECUE SANS UE — TOUJOURS AFFICHÉE */}
+              {/* SECTION ECUE SANS UE — TOUJOURS AFFICHÉE */}
               {pickedClass && (
                 <div style={{ marginTop: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
@@ -650,6 +736,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                       <thead>
                         <tr style={{ background: "#F9FAFB" }}>
                           <th style={thCenter}>Sel</th>
+                          <th style={th}>Code</th>
                           <th style={th}>ECUE</th>
                           <th style={thCenter}>Crédits</th>
                           <th style={thCenter}>Semestre</th>
@@ -658,7 +745,7 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                       <tbody>
                         {subjectsWithoutModule.length === 0 ? (
                           <tr>
-                            <td colSpan={4} style={{ padding: 12, color: "#6B7280" }}>
+                            <td colSpan={5} style={{ padding: 12, color: "#6B7280" }}>
                               Toutes les ECUE de cette classe sont déjà affectées à une UE.
                             </td>
                           </tr>
@@ -668,11 +755,15 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
                             const label = displayLabelForSubject(s);
                             const credits = s?.credits ?? "—";
                             const sem = cleanStr(s?.semesterMode || s?.semester || "S1");
+                            const code = cleanStr(s.codeOverride || s.code || "—");
 
                             return (
                               <tr key={id}>
                                 <td style={tdCenter}>
                                   <input type="checkbox" checked={!!selected[id]} onChange={() => toggleOne(id)} />
+                                </td>
+                                <td style={{ ...td, fontFamily: '"Courier New", monospace', fontWeight: 700, fontSize: ".78rem" }}>
+                                  {code}
                                 </td>
                                 <td style={td}>
                                   <b>{label}</b>
@@ -692,12 +783,59 @@ export default function ModulesPage({ currentSection = "modules", onNavigate }) 
           </div>
         </div>
       </main>
+
+      {/* Modal d'édition de module */}
+      {editingModule && (
+        <div style={modalStyles.overlay} onClick={cancelEditModule}>
+          <div style={modalStyles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={modalStyles.header}>
+              <h3 style={modalStyles.title}>Modifier le module</h3>
+              <button style={modalStyles.closeBtn} onClick={cancelEditModule}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={modalStyles.body}>
+              <div style={modalStyles.field}>
+                <label style={modalStyles.label}>Code (non modifiable)</label>
+                <input style={modalStyles.input} value={editingModule.code} disabled />
+              </div>
+              <div style={modalStyles.field}>
+                <label style={modalStyles.label}>Intitulé</label>
+                <input
+                  style={modalStyles.input}
+                  value={editForm.label}
+                  onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+                  placeholder="Intitulé du module"
+                />
+              </div>
+              <div style={modalStyles.field}>
+                <label style={modalStyles.label}>Crédits (optionnel)</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  style={modalStyles.input}
+                  value={editForm.credit}
+                  onChange={(e) => setEditForm({ ...editForm, credit: e.target.value })}
+                  placeholder="Ex: 4"
+                />
+              </div>
+            </div>
+            <div style={modalStyles.footer}>
+              <button style={modalStyles.btnSecondary} onClick={cancelEditModule}>
+                Annuler
+              </button>
+              <button style={modalStyles.btnPrimary} onClick={saveEditModule} disabled={loading}>
+                {loading ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ───────────────────────── Styles ───────────────────────── */
-
+/* ————————————————————— STYLES (inchangés) ————————————————————— */
 const styles = {
   layout: {
     display: "grid",
@@ -840,7 +978,6 @@ const thCenter = { ...th, textAlign: "center", width: 70 };
 const td = { padding: "8px 10px", borderBottom: "1px solid #E5E7EB" };
 const tdCenter = { ...td, textAlign: "center" };
 
-/* ✅ Module card style */
 const moduleCard = {
   card: {
     borderRadius: 12,
@@ -921,4 +1058,84 @@ const moduleCard = {
   thCenter: { textAlign: "center", padding: "8px 8px", borderBottom: "1px solid #E5E7EB", width: 110 },
   td: { padding: "8px 8px", borderBottom: "1px solid #F1F5F9" },
   tdCenter: { padding: "8px 8px", borderBottom: "1px solid #F1F5F9", textAlign: "center" },
+};
+
+const modalStyles = {
+  overlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2100,
+  },
+  modal: {
+    background: "#fff",
+    borderRadius: 12,
+    width: "min(500px, 90vw)",
+    maxHeight: "90vh",
+    display: "flex",
+    flexDirection: "column",
+    overflow: "hidden",
+    boxShadow: "0 20px 35px rgba(0,0,0,0.2)",
+  },
+  header: {
+    padding: "12px 16px",
+    borderBottom: "1px solid #E5E7EB",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  title: { margin: 0, fontSize: "1rem", fontWeight: 800 },
+  closeBtn: {
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 4,
+    borderRadius: 6,
+    color: "#6B7280",
+  },
+  body: { padding: "16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" },
+  field: { display: "flex", flexDirection: "column", gap: 4 },
+  label: { fontSize: ".8rem", fontWeight: 700, color: "#374151" },
+  input: {
+    width: "100%",
+    height: 38,
+    borderRadius: 8,
+    border: "1px solid #D1D5DB",
+    padding: "0 10px",
+    fontSize: ".85rem",
+    outline: "none",
+    background: "#fff",
+  },
+  footer: {
+    padding: "12px 16px",
+    borderTop: "1px solid #E5E7EB",
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  btnSecondary: {
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 8,
+    border: "1px solid #D1D5DB",
+    background: "#fff",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  btnPrimary: {
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 8,
+    border: "none",
+    background: "#00b89c",
+    color: "#fff",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
 };
