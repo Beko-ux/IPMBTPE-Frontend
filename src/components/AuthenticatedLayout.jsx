@@ -1,6 +1,7 @@
 // src/components/AuthenticatedLayout.jsx
 import VerticalNavBar from "./VerticalNavBar";
 import HorizontalNavBar from "./HorizontalNavBar";
+import { useInactivityLogout } from "../hooks/useInactivityLogout"; // <-- Nouveau
 
 export default function AuthenticatedLayout({ 
   children, 
@@ -10,6 +11,8 @@ export default function AuthenticatedLayout({
   subtitle,
   actions 
 }) {
+  useInactivityLogout(); // <-- Active la déconnexion automatique
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "252px 1fr", height: "100vh", background: "var(--bg)", overflow: "hidden" }}>
       <aside style={{ height: "100%", overflowY: "auto", background: "var(--card)", borderRight: "1px solid var(--border)" }}>

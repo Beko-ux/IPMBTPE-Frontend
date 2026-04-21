@@ -1,8 +1,11 @@
 // src/pages/AdminUsersPage.jsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import useAuthStore from "../store/useAuthStore";
 import { colors } from "../styles/theme";
-import { Search, Plus, Trash2, Power, PowerOff, Users, Filter, X, Check, AlertTriangle } from "lucide-react";
+import {
+  Search, Plus, Trash2, Power, PowerOff, Users, Filter, X, Check,
+  AlertTriangle, Loader, Mail, CheckCircle, AlertCircle
+} from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -21,6 +24,16 @@ const ROLES = [
 
 const getRoleConfig = (roleValue) => ROLES.find(r => r.value === roleValue) || ROLES[0];
 
+// Débounce maison
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export default function AdminUsersPage() {
   const token = useAuthStore((s) => s.token);
   const [users, setUsers] = useState([]);
@@ -35,6 +48,41 @@ export default function AdminUsersPage() {
     displayName: "",
     role: "gestionnaire",
   });
+
+  // États pour la vérification d'email
+  const [emailStatus, setEmailStatus] = useState("idle"); // idle, checking, available, taken, invalid
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const debouncedEmail = useDebounce(form.email, 500);
+
+  // Vérification de l'email
+  useEffect(() => {
+    const checkEmail = async (email) => {
+      if (!email) {
+        setEmailStatus("idle");
+        return;
+      }
+      // Validation simple du format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setEmailStatus("invalid");
+        return;
+      }
+      setIsCheckingEmail(true);
+      setEmailStatus("checking");
+      try {
+        const res = await fetch(`${API_BASE}/users/check-email?email=${encodeURIComponent(email)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setEmailStatus(data.exists ? "taken" : "available");
+      } catch (error) {
+        console.error("Erreur vérification email:", error);
+        setEmailStatus("idle");
+      } finally {
+        setIsCheckingEmail(false);
+      }
+    };
+    checkEmail(debouncedEmail);
+  }, [debouncedEmail]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -57,6 +105,11 @@ export default function AdminUsersPage() {
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    // Vérification supplémentaire avant envoi
+    if (emailStatus !== "available") {
+      alert("L'adresse email n'est pas disponible ou invalide.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/users`, {
         method: "POST",
@@ -66,15 +119,19 @@ export default function AdminUsersPage() {
         },
         body: JSON.stringify(form),
       });
+      const data = await res.json();
       if (res.ok) {
         setForm({ email: "", password: "", displayName: "", role: "gestionnaire" });
+        setEmailStatus("idle");
         setShowCreateModal(false);
         fetchUsers();
+        alert(`✅ Utilisateur créé avec succès !\nUn email contenant les identifiants a été envoyé à ${form.email}.`);
       } else {
-        alert("Erreur lors de la création");
+        alert(data.error || "Erreur lors de la création");
       }
     } catch (err) {
       console.error(err);
+      alert("Erreur réseau ou serveur.");
     }
   };
 
@@ -119,6 +176,27 @@ export default function AdminUsersPage() {
     total: users.length,
     active: users.filter(u => u.active).length,
     inactive: users.filter(u => !u.active).length,
+  };
+
+  // Rendu du statut de l'email dans le champ
+  const renderEmailStatusIcon = () => {
+    if (isCheckingEmail) return <Loader size={18} color={colors.gray} style={{ animation: "spin 0.8s linear infinite" }} />;
+    switch (emailStatus) {
+      case "available": return <CheckCircle size={18} color={colors.teal} />;
+      case "taken": return <AlertCircle size={18} color={colors.danger} />;
+      case "invalid": return <X size={18} color={colors.danger} />;
+      default: return <Mail size={18} color={colors.gray} />;
+    }
+  };
+
+  const getEmailHelperText = () => {
+    if (isCheckingEmail) return "Vérification en cours...";
+    switch (emailStatus) {
+      case "available": return "Email disponible ✅";
+      case "taken": return "Cet email est déjà utilisé";
+      case "invalid": return "Format d'email invalide";
+      default: return "";
+    }
   };
 
   return (
@@ -394,17 +472,32 @@ export default function AdminUsersPage() {
             <form onSubmit={handleCreate} style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: colors.gray, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Email</label>
-                <input
-                  type="email"
-                  placeholder="utilisateur@universite.edu"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  required
-                  style={{
-                    width: "100%", padding: "12px 16px", borderRadius: 12, border: `1px solid ${colors.border}`,
-                    fontSize: 14, fontFamily: "var(--font-family)", background: "var(--bg-input)", outline: "none",
-                  }}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="email"
+                    placeholder="utilisateur@universite.edu"
+                    value={form.email}
+                    onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    required
+                    style={{
+                      width: "100%", padding: "12px 48px 12px 16px", borderRadius: 12,
+                      border: `1px solid ${emailStatus === "available" ? colors.teal : emailStatus === "taken" || emailStatus === "invalid" ? colors.danger : colors.border}`,
+                      fontSize: 14, fontFamily: "var(--font-family)", background: "var(--bg-input)", outline: "none",
+                    }}
+                  />
+                  <div style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)" }}>
+                    {renderEmailStatusIcon()}
+                  </div>
+                </div>
+                {getEmailHelperText() && (
+                  <p style={{
+                    margin: "6px 0 0", fontSize: 12,
+                    color: emailStatus === "available" ? colors.teal : emailStatus === "taken" || emailStatus === "invalid" ? colors.danger : colors.gray,
+                    display: "flex", alignItems: "center", gap: 4,
+                  }}>
+                    {getEmailHelperText()}
+                  </p>
+                )}
               </div>
               
               <div>
@@ -474,10 +567,14 @@ export default function AdminUsersPage() {
                 </button>
                 <button
                   type="submit"
+                  disabled={emailStatus !== "available"}
                   style={{
                     flex: 1, padding: "12px", borderRadius: 12, border: "none",
-                    background: colors.teal, color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer",
-                    boxShadow: `0 4px 12px ${colors.teal}40`, fontFamily: "var(--font-family)",
+                    background: emailStatus === "available" ? colors.teal : colors.gray,
+                    color: "#fff", fontWeight: 700, fontSize: 14, cursor: emailStatus === "available" ? "pointer" : "not-allowed",
+                    boxShadow: emailStatus === "available" ? `0 4px 12px ${colors.teal}40` : "none",
+                    fontFamily: "var(--font-family)",
+                    opacity: emailStatus === "available" ? 1 : 0.6,
                   }}
                 >
                   Créer l'utilisateur

@@ -1,7 +1,5 @@
 // src/pages/EtudiantsPage.jsx
 import { useEffect, useMemo, useState } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
 import GestionDesEtudiantsHeader from "../components/GestionDesEtudiantsHeader.jsx";
 import ListesDesEtudiantsSection from "../components/ListesDesEtudiantsSection.jsx";
 import InscrireEtudiantModal from "../components/InscrireEtudiantModal.jsx";
@@ -11,7 +9,7 @@ import EditerEtudiantModal from "../components/EditerEtudiantModal.jsx";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
 export default function EtudiantsPage({
-  currentSection = "etudiants",
+  academicYear = "2025-2026",
   onNavigate,
 }) {
   const [students, setStudents] = useState([]);
@@ -37,10 +35,11 @@ export default function EtudiantsPage({
 
     try {
       const trimmed = (search || "").trim();
-      const url = `${API_BASE}/students${
-        trimmed ? `?q=${encodeURIComponent(trimmed)}` : ""
-      }`;
+      const params = new URLSearchParams();
+      params.set("academicYear", academicYear);
+      if (trimmed) params.set("q", trimmed);
 
+      const url = `${API_BASE}/students?${params.toString()}`;
       const res = await fetch(url);
       const data = await res.json().catch(() => null);
 
@@ -61,7 +60,7 @@ export default function EtudiantsPage({
 
   useEffect(() => {
     loadStudents();
-  }, []);
+  }, [academicYear]); // Recharge quand l'année change
 
   const { totalCount, inscritCount, nonInscritCount } = useMemo(() => {
     const total = students.length;
@@ -108,7 +107,6 @@ export default function EtudiantsPage({
 
       registrationFeePaid: payload.registrationFeePaid === true,
 
-      // InscrireEtudiantModal renvoie photoPreview
       photoUrl:
         typeof payload.photoPreview !== "undefined"
           ? payload.photoPreview
@@ -214,7 +212,6 @@ export default function EtudiantsPage({
 
       registrationFeePaid: payload.registrationFeePaid === true,
 
-      // EditerEtudiantModal renvoie photoUrl
       photoUrl:
         typeof payload.photoUrl !== "undefined" ? payload.photoUrl : null,
 
@@ -276,48 +273,33 @@ export default function EtudiantsPage({
   };
 
   return (
-    <div style={styles.layout}>
-      <aside style={styles.left}>
-        <VerticalNavBar
-          currentSection={currentSection}
-          onNavigate={onNavigate}
-        />
-      </aside>
+    <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+      <GestionDesEtudiantsHeader
+        total={totalCount}
+        query={query}
+        onQueryChange={setQuery}
+        onSearch={() => loadStudents(query)}
+        onAddNew={() => setOpenAdd(true)}
+        filter={filter}
+        counts={{
+          all: totalCount,
+          inscrits: inscritCount,
+          non: nonInscritCount,
+        }}
+        onFilterChange={setFilter}
+        loading={loading}
+        error={error}
+      />
 
-      <main style={styles.right}>
-        <HorizontalNavBar />
-
-        <div style={styles.pageBody}>
-          <div style={styles.container}>
-            <GestionDesEtudiantsHeader
-              total={totalCount}
-              query={query}
-              onQueryChange={setQuery}
-              onSearch={() => loadStudents(query)}
-              onAddNew={() => setOpenAdd(true)}
-              filter={filter}
-              counts={{
-                all: totalCount,
-                inscrits: inscritCount,
-                non: nonInscritCount,
-              }}
-              onFilterChange={setFilter}
-              loading={loading}
-              error={error}
-            />
-
-            <ListesDesEtudiantsSection
-              students={visibleStudents}
-              loading={loading}
-              error={error}
-              onShowDetail={handleShowDetail}
-              onPrintCertificat={handlePrintCertificat}
-              onPrintCarte={handlePrintCarte}
-              onEdit={handleEditStudent}
-            />
-          </div>
-        </div>
-      </main>
+      <ListesDesEtudiantsSection
+        students={visibleStudents}
+        loading={loading}
+        error={error}
+        onShowDetail={handleShowDetail}
+        onPrintCertificat={handlePrintCertificat}
+        onPrintCarte={handlePrintCarte}
+        onEdit={handleEditStudent}
+      />
 
       <InscrireEtudiantModal
         open={openAdd}

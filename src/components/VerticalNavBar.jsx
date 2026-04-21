@@ -244,6 +244,7 @@ function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigat
             transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
             transition: "transform 220ms cubic-bezier(.4,0,.2,1)",
             flexShrink: 0,
+            pointerEvents: "none",
           }}
         />
       </button>
@@ -309,6 +310,26 @@ function FooterButton({ Icon, label, onClick }) {
 export default function VerticalNavBar({ currentSection = "profile", onNavigate }) {
   const { role, logout, canAccess } = useAuthStore();
 
+  if (!role) {
+    return (
+      <aside
+        style={{
+          width: 252,
+          minWidth: 252,
+          height: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: C.card,
+          borderRight: `1px solid ${C.bd}`,
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}
+      >
+        <span style={{ color: C.fg2, fontSize: 13 }}>Chargement des permissions…</span>
+      </aside>
+    );
+  }
+
   const NAV_SECTIONS = ALL_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => canAccess(item.key)),
@@ -324,17 +345,38 @@ export default function VerticalNavBar({ currentSection = "profile", onNavigate 
     [NAV_SECTIONS]
   );
 
-  const [openSection, setOpenSection] = useState(
-    () => findParent(currentSection) ?? (NAV_SECTIONS[0]?.id || null)
-  );
+  // ✅ CORRECTION : Set au lieu d'une valeur unique
+  const [openSections, setOpenSections] = useState(() => {
+    const parent = findParent(currentSection);
+    return new Set(parent ? [parent] : NAV_SECTIONS[0]?.id ? [NAV_SECTIONS[0].id] : []);
+  });
 
+  // ✅ CORRECTION : on ajoute la section parente sans fermer les autres
   useEffect(() => {
     const parent = findParent(currentSection);
-    if (parent) setOpenSection(parent);
+    if (parent) {
+      setOpenSections((prev) => {
+        if (prev.has(parent)) return prev; // déjà ouverte, pas de re-render inutile
+        return new Set([...prev, parent]);
+      });
+    }
   }, [currentSection, findParent]);
 
-  const handleToggle = (id) => setOpenSection((prev) => (prev === id ? null : id));
+  // ✅ CORRECTION : toggle indépendant par section
+  const handleToggle = (id) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handleNavigate = useCallback((key) => onNavigate?.(key), [onNavigate]);
+
   const handleLogout = async () => {
     await logout();
     onNavigate?.("dashboard");
@@ -354,6 +396,7 @@ export default function VerticalNavBar({ currentSection = "profile", onNavigate 
         boxSizing: "border-box",
       }}
     >
+      {/* Logo / En-tête */}
       <div
         style={{
           display: "flex",
@@ -384,6 +427,7 @@ export default function VerticalNavBar({ currentSection = "profile", onNavigate 
         </div>
       </div>
 
+      {/* Navigation */}
       <div
         style={{
           flex: 1,
@@ -399,7 +443,7 @@ export default function VerticalNavBar({ currentSection = "profile", onNavigate 
           <AccordionSection
             key={section.id}
             section={section}
-            isOpen={openSection === section.id}
+            isOpen={openSections.has(section.id)} // ✅ lecture depuis le Set
             currentSection={currentSection}
             onToggle={handleToggle}
             onNavigate={handleNavigate}
@@ -407,6 +451,7 @@ export default function VerticalNavBar({ currentSection = "profile", onNavigate 
         ))}
       </div>
 
+      {/* Footer */}
       <div
         style={{
           padding: 8,

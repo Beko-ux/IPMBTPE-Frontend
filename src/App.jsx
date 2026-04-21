@@ -74,36 +74,38 @@ export default function App() {
 
   const renderPage = () => {
     switch (section) {
+      case "dashboard":
+        return <TableauDeBordPage {...commonProps} />;
       case "profile":
         return <ProfilePage />;
       case "admin_users":
         return <AdminUsersPage />;
       case "etudiants":
-        return <EtudiantsPage currentSection="etudiants" {...commonProps} />;
+        return <EtudiantsPage {...commonProps} />;
       case "classes":
-        return <ClassesPage currentSection="classes" {...commonProps} />;
+        return <ClassesPage {...commonProps} />;
       case "documents":
-        return <DocumentsPage currentSection="documents" {...commonProps} />;
+        return <DocumentsPage {...commonProps} />;
       case "notes":
-        return <NotesPage currentSection="notes" {...commonProps} />;
+        return <NotesPage {...commonProps} />;
       case "liste_presence":
-        return <PresencesExamensPage currentSection="liste_presence" {...commonProps} />;
+        return <PresencesExamensPage {...commonProps} />;
       case "matieres":
-        return <MatieresPage currentSection="matieres" {...commonProps} />;
+        return <MatieresPage {...commonProps} />;
       case "modules":
-        return <ModulesPage currentSection="modules" {...commonProps} />;
+        return <ModulesPage {...commonProps} />;
       case "envoyer":
-        return <EnvoyerPage currentSection="envoyer" {...commonProps} />;
+        return <EnvoyerPage {...commonProps} />;
       case "scolarite":
-        return <ScolaritePage currentSection="scolarite" {...commonProps} />;
+        return <ScolaritePage {...commonProps} />;
       case "evaluations":
-        return <AnonymatsSessionPage currentSection="evaluations" {...commonProps} />;
+        return <AnonymatsSessionPage {...commonProps} />;
       case "anonymats":
-        return <AnonymatsPage currentSection="anonymats" {...commonProps} />;
+        return <AnonymatsPage {...commonProps} />;
       case "materiel":
-        return <MaterielPage currentSection="materiel" {...commonProps} />;
+        return <MaterielPage {...commonProps} />;
       default:
-        return <ProfilePage />;
+        return <TableauDeBordPage {...commonProps} />;
     }
   };
 

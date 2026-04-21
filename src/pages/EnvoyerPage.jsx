@@ -1,6 +1,5 @@
 // src/pages/EnvoyerPage.jsx
 import { useEffect, useMemo, useState } from "react";
-import VerticalNavBar from "../components/VerticalNavBar";
 import {
   Upload,
   Search,
@@ -18,7 +17,6 @@ import {
 import { colors } from "../styles/theme";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
-const DEFAULT_YEAR = "2025-2026";
 
 function useWindowWidth() {
   const [w, setW] = useState(
@@ -68,7 +66,7 @@ function pickMatricule(stu) {
   ).trim();
 }
 
-export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) {
+export default function EnvoyerPage({ academicYear = "2025-2026", onNavigate }) {
   const width = useWindowWidth();
   const isMobile = width < 980;
 
@@ -119,7 +117,7 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
     []
   );
 
-  // CLASSES from backend
+  // CLASSES from backend (using academicYear prop)
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
 
@@ -128,7 +126,7 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
       setLoadingClasses(true);
       try {
         const res = await fetch(
-          `${API_BASE}/classes?year=${encodeURIComponent(DEFAULT_YEAR)}`
+          `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
         );
         const data = await res.json();
         setClasses(Array.isArray(data) ? data : []);
@@ -140,7 +138,7 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
       }
     };
     load();
-  }, []);
+  }, [academicYear]);
 
   const classesAsTargets = useMemo(() => {
     return classes.map((c) => {
@@ -150,13 +148,13 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
         type: "class",
         classId: c.id,
         name: c.title || c.abbrev || c.id,
-        hint: `${c.academicYear || DEFAULT_YEAR}${
+        hint: `${c.academicYear || academicYear}${
           students.length ? ` • ${students.length} étudiant(s)` : ""
         }`,
         raw: c,
       };
     });
-  }, [classes]);
+  }, [classes, academicYear]);
 
   const selectedClass = useMemo(() => {
     if (!selectedTarget || selectedTarget.type !== "class") return null;
@@ -307,523 +305,519 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
     : pageStyles.grid;
 
   return (
-    <div style={pageStyles.shell}>
-      <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-
-      <main style={pageStyles.main}>
-        {/* TOP BAR */}
-        <div style={pageStyles.topbar}>
-          <div>
-            <div style={pageStyles.kicker}>Communication</div>
-            <h1 style={pageStyles.h1}>Envoyer</h1>
-            <p style={pageStyles.sub}>
-              Envoi via <b>Inbox Firestore</b> + (optionnel){" "}
-              <b>Notifications Push (FCM)</b>.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            style={{
-              ...pageStyles.primaryBtn,
-              opacity: selectedTarget ? 1 : 0.6,
-              cursor: selectedTarget ? "pointer" : "not-allowed",
-            }}
-            onClick={openComposer}
-            disabled={!selectedTarget}
-          >
-            <Send size={16} />
-            <span>Composer</span>
-          </button>
+    <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+      {/* TOP BAR */}
+      <div style={pageStyles.topbar}>
+        <div>
+          <div style={pageStyles.kicker}>Communication</div>
+          <h1 style={pageStyles.h1}>Envoyer</h1>
+          <p style={pageStyles.sub}>
+            Envoi via <b>Inbox Firestore</b> + (optionnel){" "}
+            <b>Notifications Push (FCM)</b>.
+          </p>
         </div>
 
-        {/* GRID */}
-        <div style={gridStyle}>
-          {/* LEFT */}
-          <section style={cardStyles.card}>
-            <div style={cardStyles.cardHeader}>
-              <div style={cardStyles.cardTitle}>Choisir une cible</div>
-              <div style={cardStyles.cardHint}>Personne ou Classe.</div>
+        <button
+          type="button"
+          style={{
+            ...pageStyles.primaryBtn,
+            opacity: selectedTarget ? 1 : 0.6,
+            cursor: selectedTarget ? "pointer" : "not-allowed",
+          }}
+          onClick={openComposer}
+          disabled={!selectedTarget}
+        >
+          <Send size={16} />
+          <span>Composer</span>
+        </button>
+      </div>
+
+      {/* GRID */}
+      <div style={gridStyle}>
+        {/* LEFT */}
+        <section style={cardStyles.card}>
+          <div style={cardStyles.cardHeader}>
+            <div style={cardStyles.cardTitle}>Choisir une cible</div>
+            <div style={cardStyles.cardHint}>Personne ou Classe.</div>
+          </div>
+
+          {/* Tabs */}
+          <div style={tabsStyles.wrap}>
+            <button
+              type="button"
+              onClick={() => {
+                setTargetMode("person");
+                setSelectedTarget(null);
+                setQuery("");
+              }}
+              style={{
+                ...tabsStyles.tab,
+                ...(targetMode === "person" ? tabsStyles.tabActive : null),
+              }}
+            >
+              <Users size={16} />
+              <span>Personne</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setTargetMode("class");
+                setSelectedTarget(null);
+                setQuery("");
+              }}
+              style={{
+                ...tabsStyles.tab,
+                ...(targetMode === "class" ? tabsStyles.tabActive : null),
+              }}
+            >
+              <Layers size={16} />
+              <span>Classe</span>
+            </button>
+          </div>
+
+          {/* Upload */}
+          <div style={cardStyles.block}>
+            <div style={cardStyles.blockTitle}>
+              Téléverser un document (optionnel)
+            </div>
+            <div style={cardStyles.blockSub}>
+              Plus tard : upload Firebase Storage + joindre au message.
             </div>
 
-            {/* Tabs */}
-            <div style={tabsStyles.wrap}>
-              <button
-                type="button"
-                onClick={() => {
-                  setTargetMode("person");
-                  setSelectedTarget(null);
-                  setQuery("");
-                }}
-                style={{
-                  ...tabsStyles.tab,
-                  ...(targetMode === "person" ? tabsStyles.tabActive : null),
-                }}
-              >
-                <Users size={16} />
-                <span>Personne</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTargetMode("class");
-                  setSelectedTarget(null);
-                  setQuery("");
-                }}
-                style={{
-                  ...tabsStyles.tab,
-                  ...(targetMode === "class" ? tabsStyles.tabActive : null),
-                }}
-              >
-                <Layers size={16} />
-                <span>Classe</span>
-              </button>
-            </div>
-
-            {/* Upload */}
-            <div style={cardStyles.block}>
-              <div style={cardStyles.blockTitle}>
-                Téléverser un document (optionnel)
-              </div>
-              <div style={cardStyles.blockSub}>
-                Plus tard : upload Firebase Storage + joindre au message.
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              style={{
+                ...uploadStyles.dropzone,
+                borderColor: dragOver ? colors.teal : colors.border,
+                background: dragOver
+                  ? "rgba(20, 184, 166, .06)"
+                  : "var(--bg)",
+              }}
+            >
+              <div style={uploadStyles.iconBox}>
+                <Upload size={18} />
               </div>
 
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={onDrop}
-                style={{
-                  ...uploadStyles.dropzone,
-                  borderColor: dragOver ? colors.teal : colors.border,
-                  background: dragOver
-                    ? "rgba(20, 184, 166, .06)"
-                    : "var(--bg)",
-                }}
-              >
-                <div style={uploadStyles.iconBox}>
-                  <Upload size={18} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div style={uploadStyles.dropTitle}>
+                  Glisser-déposer ici ou{" "}
+                  <span style={uploadStyles.dropLink}>
+                    cliquer pour téléverser
+                  </span>
                 </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div style={uploadStyles.dropTitle}>
-                    Glisser-déposer ici ou{" "}
-                    <span style={uploadStyles.dropLink}>
-                      cliquer pour téléverser
-                    </span>
-                  </div>
-                  <div style={uploadStyles.dropHint}>
-                    PDF, PNG ou JPG — placeholder
-                  </div>
+                <div style={uploadStyles.dropHint}>
+                  PDF, PNG ou JPG — placeholder
                 </div>
               </div>
             </div>
+          </div>
 
-            <div style={cardStyles.orRow}>
-              <div style={cardStyles.orLine} />
-              <div style={cardStyles.orText}>OU</div>
-              <div style={cardStyles.orLine} />
+          <div style={cardStyles.orRow}>
+            <div style={cardStyles.orLine} />
+            <div style={cardStyles.orText}>OU</div>
+            <div style={cardStyles.orLine} />
+          </div>
+
+          {/* Search */}
+          <div style={cardStyles.block}>
+            <div style={cardStyles.blockTitle}>
+              {targetMode === "person"
+                ? "Choisir une personne"
+                : "Choisir une classe"}
+            </div>
+            <div style={cardStyles.blockSub}>
+              {targetMode === "class"
+                ? "Après sélection, les étudiants s’affichent dans Aperçu (à droite)."
+                : "Recherche par nom, matricule, téléphone…"}
             </div>
 
-            {/* Search */}
-            <div style={cardStyles.block}>
-              <div style={cardStyles.blockTitle}>
-                {targetMode === "person"
-                  ? "Choisir une personne"
-                  : "Choisir une classe"}
-              </div>
-              <div style={cardStyles.blockSub}>
-                {targetMode === "class"
-                  ? "Après sélection, les étudiants s’affichent dans Aperçu (à droite)."
-                  : "Recherche par nom, matricule, téléphone…"}
-              </div>
-
-              <div style={searchStyles.searchWrap}>
-                <Search size={16} color={colors.gray} />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={
-                    targetMode === "person"
-                      ? "Rechercher une personne"
-                      : "Rechercher une classe"
-                  }
-                  style={searchStyles.input}
-                />
-              </div>
-
-              {targetMode === "person" && (
-                <div style={searchStyles.quickActions}>
-                  <button
-                    type="button"
-                    style={searchStyles.softBtn}
-                    onClick={actionCreateRecipient}
-                  >
-                    <Plus size={16} />
-                    <span>Créer</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    style={searchStyles.softBtn}
-                    onClick={actionInviteRecipient}
-                  >
-                    <Mail size={16} />
-                    <span>Inviter</span>
-                  </button>
-                </div>
-              )}
-
-              {/* LIST */}
-              <div style={listStyles.list}>
-                {targetMode === "class" && loadingClasses && (
-                  <div style={hintBoxStyles.box}>Chargement des classes…</div>
-                )}
-
-                {filteredTargets.slice(0, 12).map((t) => {
-                  const active = selectedTarget?.id === t.id;
-                  const isClass = t.type === "class";
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => onPickTarget(t)}
-                      style={{
-                        ...listStyles.row,
-                        borderColor: active ? colors.teal : colors.border,
-                        background: active ? "rgba(20,184,166,.06)" : "#fff",
-                      }}
-                    >
-                      <div style={listStyles.avatar}>
-                        {isClass ? <Users size={16} /> : <FileText size={16} />}
-                      </div>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={listStyles.nameRow}>
-                          <span style={listStyles.name}>{t.name}</span>
-                          <span style={listStyles.role}>
-                            {t.role || (isClass ? "Classe" : "")}
-                          </span>
-                        </div>
-                        <div style={listStyles.hint}>{t.hint}</div>
-                      </div>
-
-                      <ChevronRight size={16} color={colors.gray} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </section>
-
-          {/* RIGHT */}
-          <section style={cardStyles.card}>
-            <div style={cardStyles.cardHeader}>
-              <div style={cardStyles.cardTitle}>Aperçu</div>
-              <div style={cardStyles.cardHint}>
-                L’envoi crée un message dans l’Inbox Firestore + option Push FCM.
-              </div>
+            <div style={searchStyles.searchWrap}>
+              <Search size={16} color={colors.gray} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={
+                  targetMode === "person"
+                    ? "Rechercher une personne"
+                    : "Rechercher une classe"
+                }
+                style={searchStyles.input}
+              />
             </div>
 
-            <div style={previewStyles.panel}>
-              <div style={previewStyles.badge}>Étape suivante</div>
+            {targetMode === "person" && (
+              <div style={searchStyles.quickActions}>
+                <button
+                  type="button"
+                  style={searchStyles.softBtn}
+                  onClick={actionCreateRecipient}
+                >
+                  <Plus size={16} />
+                  <span>Créer</span>
+                </button>
 
-              {!selectedTarget ? (
-                <div style={previewStyles.empty}>
-                  <div style={previewStyles.emptyTitle}>Sélectionne une cible</div>
-                  <div style={previewStyles.emptyText}>
-                    Ensuite tu composeras ton message et tu choisis si tu veux le
-                    Push.
-                  </div>
-                </div>
-              ) : (
-                <div style={previewStyles.selected}>
-                  <div style={previewStyles.selTop}>
-                    <div style={previewStyles.selAvatar}>
-                      {selectedTarget.type === "class" ? (
-                        <Users size={18} />
-                      ) : (
-                        <FileText size={18} />
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={previewStyles.selName}>
-                        {selectedTarget.name}
-                      </div>
-                      <div style={previewStyles.selMeta}>
-                        {(selectedTarget.role || "Classe")} •{" "}
-                        {selectedTarget.hint}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={previewStyles.actions}>
-                    <button
-                      type="button"
-                      style={previewStyles.primary}
-                      onClick={openComposer}
-                    >
-                      <Send size={16} />
-                      <span>Composer & envoyer</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      style={previewStyles.secondary}
-                      onClick={() => alert("Joindre document (placeholder)")}
-                    >
-                      <FileText size={16} />
-                      <span>Joindre un fichier</span>
-                    </button>
-                  </div>
-
-                  <div style={previewStyles.note}>
-                    ✅ <b>Inbox Firestore</b> = message lisible dans l’app. <br />
-                    ✅ <b>Push FCM</b> = notification “Nouveau message”.
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ✅ HERE: SHOW STUDENTS when class selected */}
-            {targetMode === "class" && selectedClass && (
-              <div style={{ marginTop: 14 }}>
-                <div style={studentsCardStyles.header}>
-                  <div>
-                    <div style={studentsCardStyles.title}>
-                      Destinataires (classe)
-                    </div>
-                    <div style={studentsCardStyles.sub}>
-                      {classContactStats.total} étudiant(s) •{" "}
-                      {classContactStats.withPhone} avec téléphone •{" "}
-                      {classContactStats.withEmail} avec email
-                    </div>
-                  </div>
-                  <div style={studentsCardStyles.badge}>
-                    {selectedClass.title || selectedClass.id}
-                  </div>
-                </div>
-
-                <div style={studentsCardStyles.tableWrap}>
-                  <table style={studentsCardStyles.table}>
-                    <thead>
-                      <tr>
-                        <th style={studentsCardStyles.thNum}>#</th>
-                        <th style={studentsCardStyles.th}>Matricule</th>
-                        <th style={studentsCardStyles.th}>Nom complet</th>
-                        <th style={studentsCardStyles.th}>Téléphone</th>
-                        <th style={studentsCardStyles.th}>Email</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {classStudents.length === 0 ? (
-                        <tr>
-                          <td colSpan={5} style={studentsCardStyles.empty}>
-                            Aucun étudiant dans cette classe.
-                          </td>
-                        </tr>
-                      ) : (
-                        classStudents.map((stu, idx) => {
-                          const phone = pickPhone(stu); // empty ok
-                          const email = pickEmail(stu); // empty ok
-                          return (
-                            <tr key={stu.id || `${idx}-${pickMatricule(stu)}`}>
-                              <td style={studentsCardStyles.tdNum}>
-                                {idx + 1}
-                              </td>
-                              <td style={studentsCardStyles.tdMono}>
-                                {pickMatricule(stu)}
-                              </td>
-                              <td style={studentsCardStyles.tdName}>
-                                {pickName(stu)}
-                              </td>
-                              <td style={studentsCardStyles.td}>
-                                {phone || ""}
-                              </td>
-                              <td style={studentsCardStyles.td}>
-                                {email || ""}
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div style={studentsCardStyles.note}>
-                  (Si téléphone/email n’existe pas, c’est laissé vide comme tu as
-                  demandé.)
-                </div>
+                <button
+                  type="button"
+                  style={searchStyles.softBtn}
+                  onClick={actionInviteRecipient}
+                >
+                  <Mail size={16} />
+                  <span>Inviter</span>
+                </button>
               </div>
             )}
 
-            {/* RECENT */}
-            <div style={{ marginTop: 14 }}>
-              <div style={recentStyles.title}>Récemment envoyé</div>
-              <div style={recentStyles.list}>
-                {recent.map((r) => (
-                  <div key={r.id} style={recentStyles.item}>
-                    <div style={recentStyles.dot} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={recentStyles.row1}>
-                        <span style={recentStyles.name}>{r.name}</span>
-                        <span style={recentStyles.when}>{r.when}</span>
-                      </div>
-                      <div style={recentStyles.meta}>
-                        {r.role} • {r.hint}
-                      </div>
-                    </div>
-                    <ChevronRight size={16} color={colors.gray} />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
-        </div>
+            {/* LIST */}
+            <div style={listStyles.list}>
+              {targetMode === "class" && loadingClasses && (
+                <div style={hintBoxStyles.box}>Chargement des classes…</div>
+              )}
 
-        {/* COMPOSER MODAL */}
-        {composerOpen && (
-          <div style={modalStyles.backdrop} onMouseDown={closeComposer}>
-            <div
-              style={modalStyles.modal}
-              onMouseDown={(e) => e.stopPropagation()}
-            >
-              <div style={modalStyles.header}>
-                <div>
-                  <div style={modalStyles.titleRow}>
-                    <div style={modalStyles.title}>Composer un message</div>
-                    <div style={modalStyles.targetPill}>
-                      {selectedTarget?.type === "class" ? (
-                        <Users size={14} />
-                      ) : (
-                        <FileText size={14} />
-                      )}
-                      <span style={{ fontWeight: 900 }}>
-                        {selectedTarget?.name}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={modalStyles.subtitle}>
-                    Envoi : Inbox Firestore {sendPush ? "+ Push FCM" : "(sans push)"}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  style={modalStyles.closeBtn}
-                  onClick={closeComposer}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div style={modalStyles.body}>
-                <div style={formStyles.row}>
-                  <label style={formStyles.label}>Titre</label>
-                  <input
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    style={formStyles.input}
-                    placeholder="Ex: Résultats S1"
-                  />
-                </div>
-
-                <div style={formStyles.row}>
-                  <label style={formStyles.label}>Message</label>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    style={formStyles.textarea}
-                    placeholder="Écris ton message ici…"
-                  />
-                  {selectedTarget?.type === "class" && (
-                    <div style={formStyles.help}>
-                      Template (optionnel) : <b>{"{{firstName}}"}</b>,{" "}
-                      <b>{"{{lastName}}"}</b>, <b>{"{{matricule}}"}</b>
-                    </div>
-                  )}
-                </div>
-
-                <div style={formStyles.switchRow}>
+              {filteredTargets.slice(0, 12).map((t) => {
+                const active = selectedTarget?.id === t.id;
+                const isClass = t.type === "class";
+                return (
                   <button
+                    key={t.id}
                     type="button"
-                    onClick={() => setSendPush((v) => !v)}
+                    onClick={() => onPickTarget(t)}
                     style={{
-                      ...formStyles.switchBtn,
-                      borderColor: sendPush ? colors.teal : colors.border,
-                      background: sendPush ? "rgba(20,184,166,.08)" : "#fff",
+                      ...listStyles.row,
+                      borderColor: active ? colors.teal : colors.border,
+                      background: active ? "rgba(20,184,166,.06)" : "#fff",
                     }}
                   >
-                    <Bell
-                      size={16}
-                      color={sendPush ? colors.teal : colors.gray}
-                    />
-                    <span style={{ fontWeight: 900 }}>
-                      {sendPush ? "Push activé" : "Push désactivé"}
-                    </span>
-                  </button>
+                    <div style={listStyles.avatar}>
+                      {isClass ? <Users size={16} /> : <FileText size={16} />}
+                    </div>
 
-                  {selectedTarget?.type === "class" && (
-                    <button
-                      type="button"
-                      onClick={() => setTemplateMode((v) => !v)}
-                      style={{
-                        ...formStyles.switchBtn,
-                        borderColor: templateMode ? colors.teal : colors.border,
-                        background: templateMode
-                          ? "rgba(20,184,166,.08)"
-                          : "#fff",
-                      }}
-                    >
-                      <Check
-                        size={16}
-                        color={templateMode ? colors.teal : colors.gray}
-                      />
-                      <span style={{ fontWeight: 900 }}>
-                        {templateMode ? "Template ON" : "Template OFF"}
-                      </span>
-                    </button>
-                  )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={listStyles.nameRow}>
+                        <span style={listStyles.name}>{t.name}</span>
+                        <span style={listStyles.role}>
+                          {t.role || (isClass ? "Classe" : "")}
+                        </span>
+                      </div>
+                      <div style={listStyles.hint}>{t.hint}</div>
+                    </div>
+
+                    <ChevronRight size={16} color={colors.gray} />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        {/* RIGHT */}
+        <section style={cardStyles.card}>
+          <div style={cardStyles.cardHeader}>
+            <div style={cardStyles.cardTitle}>Aperçu</div>
+            <div style={cardStyles.cardHint}>
+              L’envoi crée un message dans l’Inbox Firestore + option Push FCM.
+            </div>
+          </div>
+
+          <div style={previewStyles.panel}>
+            <div style={previewStyles.badge}>Étape suivante</div>
+
+            {!selectedTarget ? (
+              <div style={previewStyles.empty}>
+                <div style={previewStyles.emptyTitle}>Sélectionne une cible</div>
+                <div style={previewStyles.emptyText}>
+                  Ensuite tu composeras ton message et tu choisis si tu veux le
+                  Push.
+                </div>
+              </div>
+            ) : (
+              <div style={previewStyles.selected}>
+                <div style={previewStyles.selTop}>
+                  <div style={previewStyles.selAvatar}>
+                    {selectedTarget.type === "class" ? (
+                      <Users size={18} />
+                    ) : (
+                      <FileText size={18} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={previewStyles.selName}>
+                      {selectedTarget.name}
+                    </div>
+                    <div style={previewStyles.selMeta}>
+                      {(selectedTarget.role || "Classe")} •{" "}
+                      {selectedTarget.hint}
+                    </div>
+                  </div>
                 </div>
 
-                {lastResult && (
-                  <div style={resultStyles.box}>
-                    <div style={resultStyles.title}>✅ Envoi réussi</div>
-                    <pre style={resultStyles.pre}>
-                      {JSON.stringify(lastResult, null, 2)}
-                    </pre>
+                <div style={previewStyles.actions}>
+                  <button
+                    type="button"
+                    style={previewStyles.primary}
+                    onClick={openComposer}
+                  >
+                    <Send size={16} />
+                    <span>Composer & envoyer</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    style={previewStyles.secondary}
+                    onClick={() => alert("Joindre document (placeholder)")}
+                  >
+                    <FileText size={16} />
+                    <span>Joindre un fichier</span>
+                  </button>
+                </div>
+
+                <div style={previewStyles.note}>
+                  ✅ <b>Inbox Firestore</b> = message lisible dans l’app. <br />
+                  ✅ <b>Push FCM</b> = notification “Nouveau message”.
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ✅ SHOW STUDENTS when class selected */}
+          {targetMode === "class" && selectedClass && (
+            <div style={{ marginTop: 14 }}>
+              <div style={studentsCardStyles.header}>
+                <div>
+                  <div style={studentsCardStyles.title}>
+                    Destinataires (classe)
+                  </div>
+                  <div style={studentsCardStyles.sub}>
+                    {classContactStats.total} étudiant(s) •{" "}
+                    {classContactStats.withPhone} avec téléphone •{" "}
+                    {classContactStats.withEmail} avec email
+                  </div>
+                </div>
+                <div style={studentsCardStyles.badge}>
+                  {selectedClass.title || selectedClass.id}
+                </div>
+              </div>
+
+              <div style={studentsCardStyles.tableWrap}>
+                <table style={studentsCardStyles.table}>
+                  <thead>
+                    <tr>
+                      <th style={studentsCardStyles.thNum}>#</th>
+                      <th style={studentsCardStyles.th}>Matricule</th>
+                      <th style={studentsCardStyles.th}>Nom complet</th>
+                      <th style={studentsCardStyles.th}>Téléphone</th>
+                      <th style={studentsCardStyles.th}>Email</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {classStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} style={studentsCardStyles.empty}>
+                          Aucun étudiant dans cette classe.
+                        </td>
+                      </tr>
+                    ) : (
+                      classStudents.map((stu, idx) => {
+                        const phone = pickPhone(stu);
+                        const email = pickEmail(stu);
+                        return (
+                          <tr key={stu.id || `${idx}-${pickMatricule(stu)}`}>
+                            <td style={studentsCardStyles.tdNum}>
+                              {idx + 1}
+                            </td>
+                            <td style={studentsCardStyles.tdMono}>
+                              {pickMatricule(stu)}
+                            </td>
+                            <td style={studentsCardStyles.tdName}>
+                              {pickName(stu)}
+                            </td>
+                            <td style={studentsCardStyles.td}>
+                              {phone || ""}
+                            </td>
+                            <td style={studentsCardStyles.td}>
+                              {email || ""}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={studentsCardStyles.note}>
+                (Si téléphone/email n’existe pas, c’est laissé vide comme tu as
+                demandé.)
+              </div>
+            </div>
+          )}
+
+          {/* RECENT */}
+          <div style={{ marginTop: 14 }}>
+            <div style={recentStyles.title}>Récemment envoyé</div>
+            <div style={recentStyles.list}>
+              {recent.map((r) => (
+                <div key={r.id} style={recentStyles.item}>
+                  <div style={recentStyles.dot} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={recentStyles.row1}>
+                      <span style={recentStyles.name}>{r.name}</span>
+                      <span style={recentStyles.when}>{r.when}</span>
+                    </div>
+                    <div style={recentStyles.meta}>
+                      {r.role} • {r.hint}
+                    </div>
+                  </div>
+                  <ChevronRight size={16} color={colors.gray} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* COMPOSER MODAL */}
+      {composerOpen && (
+        <div style={modalStyles.backdrop} onMouseDown={closeComposer}>
+          <div
+            style={modalStyles.modal}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={modalStyles.header}>
+              <div>
+                <div style={modalStyles.titleRow}>
+                  <div style={modalStyles.title}>Composer un message</div>
+                  <div style={modalStyles.targetPill}>
+                    {selectedTarget?.type === "class" ? (
+                      <Users size={14} />
+                    ) : (
+                      <FileText size={14} />
+                    )}
+                    <span style={{ fontWeight: 900 }}>
+                      {selectedTarget?.name}
+                    </span>
+                  </div>
+                </div>
+                <div style={modalStyles.subtitle}>
+                  Envoi : Inbox Firestore {sendPush ? "+ Push FCM" : "(sans push)"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                style={modalStyles.closeBtn}
+                onClick={closeComposer}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={modalStyles.body}>
+              <div style={formStyles.row}>
+                <label style={formStyles.label}>Titre</label>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  style={formStyles.input}
+                  placeholder="Ex: Résultats S1"
+                />
+              </div>
+
+              <div style={formStyles.row}>
+                <label style={formStyles.label}>Message</label>
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  style={formStyles.textarea}
+                  placeholder="Écris ton message ici…"
+                />
+                {selectedTarget?.type === "class" && (
+                  <div style={formStyles.help}>
+                    Template (optionnel) : <b>{"{{firstName}}"}</b>,{" "}
+                    <b>{"{{lastName}}"}</b>, <b>{"{{matricule}}"}</b>
                   </div>
                 )}
               </div>
 
-              <div style={modalStyles.footer}>
+              <div style={formStyles.switchRow}>
                 <button
                   type="button"
-                  style={modalStyles.secondaryBtn}
-                  onClick={closeComposer}
-                  disabled={sending}
+                  onClick={() => setSendPush((v) => !v)}
+                  style={{
+                    ...formStyles.switchBtn,
+                    borderColor: sendPush ? colors.teal : colors.border,
+                    background: sendPush ? "rgba(20,184,166,.08)" : "#fff",
+                  }}
                 >
-                  Annuler
+                  <Bell
+                    size={16}
+                    color={sendPush ? colors.teal : colors.gray}
+                  />
+                  <span style={{ fontWeight: 900 }}>
+                    {sendPush ? "Push activé" : "Push désactivé"}
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  style={modalStyles.primaryBtn}
-                  onClick={sendNow}
-                  disabled={sending}
-                >
-                  {sending ? "Envoi..." : "Envoyer"}
-                  <Send size={16} />
-                </button>
+
+                {selectedTarget?.type === "class" && (
+                  <button
+                    type="button"
+                    onClick={() => setTemplateMode((v) => !v)}
+                    style={{
+                      ...formStyles.switchBtn,
+                      borderColor: templateMode ? colors.teal : colors.border,
+                      background: templateMode
+                        ? "rgba(20,184,166,.08)"
+                        : "#fff",
+                    }}
+                  >
+                    <Check
+                      size={16}
+                      color={templateMode ? colors.teal : colors.gray}
+                    />
+                    <span style={{ fontWeight: 900 }}>
+                      {templateMode ? "Template ON" : "Template OFF"}
+                    </span>
+                  </button>
+                )}
               </div>
+
+              {lastResult && (
+                <div style={resultStyles.box}>
+                  <div style={resultStyles.title}>✅ Envoi réussi</div>
+                  <pre style={resultStyles.pre}>
+                    {JSON.stringify(lastResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div style={modalStyles.footer}>
+              <button
+                type="button"
+                style={modalStyles.secondaryBtn}
+                onClick={closeComposer}
+                disabled={sending}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                style={modalStyles.primaryBtn}
+                onClick={sendNow}
+                disabled={sending}
+              >
+                {sending ? "Envoi..." : "Envoyer"}
+                <Send size={16} />
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
     </div>
   );
 }
@@ -831,13 +825,6 @@ export default function EnvoyerPage({ currentSection = "envoyer", onNavigate }) 
 /* ----------------- styles ----------------- */
 
 const pageStyles = {
-  shell: {
-    display: "flex",
-    minHeight: "100vh",
-    background: "var(--bg)",
-    color: "var(--fg)",
-  },
-  main: { flex: 1, padding: "1.25rem", minWidth: 0 },
   topbar: {
     display: "flex",
     alignItems: "flex-start",

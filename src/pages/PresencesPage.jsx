@@ -1,19 +1,17 @@
 // src/pages/PresencesPage.jsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
 import { Save } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
-export default function PresencesPage({ currentSection = "presences", onNavigate }) {
+export default function PresencesPage({ academicYear = "2025-2026", onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // -------------------------
   // Filtres obligatoires
   // -------------------------
-  const [academicYear, setAcademicYear] = useState("2025-2026");
+  const [selectedYear, setSelectedYear] = useState(academicYear);
 
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
@@ -43,7 +41,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
       setLoadingClasses(true);
       try {
         const res = await fetch(
-          `${API_BASE}/classes?year=${encodeURIComponent(academicYear)}`
+          `${API_BASE}/classes?year=${encodeURIComponent(selectedYear)}`
         );
         const data = await res.json();
 
@@ -65,7 +63,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
       }
     };
     loadClasses();
-  }, [academicYear]);
+  }, [selectedYear]);
 
   const selectedClass = useMemo(
     () => classes.find((c) => String(c.id) === String(selectedClassId)) || null,
@@ -164,7 +162,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
   // -------------------------
   useEffect(() => {
     // reset affichage si filtres incomplets
-    if (!selectedClassId || !academicYear || !periodFrom || !periodTo) {
+    if (!selectedClassId || !selectedYear || !periodFrom || !periodTo) {
       setSheet(null);
       setStudents([]);
       setMaxHoursPerDay(null);
@@ -173,7 +171,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
       return;
     }
 
-    const loadKey = `${selectedClassId}__${academicYear}__${periodFrom}__${periodTo}`;
+    const loadKey = `${selectedClassId}__${selectedYear}__${periodFrom}__${periodTo}`;
     if (lastLoadKeyRef.current === loadKey) return;
 
     if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
@@ -187,7 +185,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
       try {
         const qs = new URLSearchParams({
           classId: String(selectedClassId),
-          academicYear: String(academicYear || "").trim(),
+          academicYear: String(selectedYear || "").trim(),
           periodFrom: String(periodFrom),
           periodTo: String(periodTo),
         });
@@ -217,14 +215,14 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
     return () => {
       if (loadTimerRef.current) clearTimeout(loadTimerRef.current);
     };
-  }, [selectedClassId, academicYear, periodFrom, periodTo]);
+  }, [selectedClassId, selectedYear, periodFrom, periodTo]);
 
   // -------------------------
   // Enregistrer fiche
   // -------------------------
   const handleSave = async () => {
     if (!selectedClassId) return alert("Veuillez choisir une classe.");
-    if (!academicYear) return alert("Année académique obligatoire.");
+    if (!selectedYear) return alert("Année académique obligatoire.");
     if (!periodFrom || !periodTo) return alert("Période obligatoire (du / au).");
     if (!sheet) return alert("Aucune fiche chargée.");
 
@@ -257,7 +255,7 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
       setSaving(true);
       const body = {
         classId: selectedClassId,
-        academicYear,
+        academicYear: selectedYear,
         periodFrom,
         periodTo,
         entries: payloadEntries,
@@ -283,11 +281,11 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
   };
 
   const classLabel = classMeta
-    ? `${classMeta.academicYear || academicYear} · ${
+    ? `${classMeta.academicYear || selectedYear} · ${
         classMeta.title || classMeta.displayName || classMeta.abbrev || ""
       }${classMeta.studyYear ? ` · Niveau ${classMeta.studyYear}` : ""}`
     : selectedClass
-    ? `${selectedClass.academicYear || academicYear} · ${
+    ? `${selectedClass.academicYear || selectedYear} · ${
         selectedClass.title || selectedClass.displayName || selectedClass.abbrev || ""
       }${selectedClass.studyYear ? ` · Niveau ${selectedClass.studyYear}` : ""}`
     : "Aucune classe sélectionnée";
@@ -296,240 +294,228 @@ export default function PresencesPage({ currentSection = "presences", onNavigate
   const maxLabel = typeof maxHoursPerDay === "number" ? maxHoursPerDay : "—";
 
   return (
-    <div style={styles.layout}>
-      <aside style={styles.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
+    <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+      {/* ---------------- Header ---------------- */}
+      <section style={headerStyles.card}>
+        <div style={headerStyles.left}>
+          <h1 style={headerStyles.title}>Fiches de présence</h1>
+          <p style={headerStyles.subtitle}>
+            Sélectionne la classe + période, puis saisis les heures d’absence par jour.
+          </p>
 
-      <main style={styles.right}>
-        <HorizontalNavBar />
+          <p style={headerStyles.badge}>
+            {loading ? "Chargement…" : `${sortedStudents.length} étudiant(s)`}
+          </p>
 
-        <div style={styles.pageBody}>
-          <div style={styles.container}>
-            {/* ---------------- Header ---------------- */}
-            <section style={headerStyles.card}>
-              <div style={headerStyles.left}>
-                <h1 style={headerStyles.title}>Fiches de présence</h1>
-                <p style={headerStyles.subtitle}>
-                  Sélectionne la classe + période, puis saisis les heures d’absence par jour.
-                </p>
+          <p style={headerStyles.classInfo}>{classLabel}</p>
 
-                <p style={headerStyles.badge}>
-                  {loading ? "Chargement…" : `${sortedStudents.length} étudiant(s)`}
-                </p>
+          <p style={headerStyles.subjectInfo}>
+            <strong>Cycle :</strong> {cycleLabel}
+            {" · "}
+            <strong>Max heures/jour :</strong> {maxLabel}
+            {" · "}
+            <strong>Période :</strong> {periodLabel}
+          </p>
+        </div>
 
-                <p style={headerStyles.classInfo}>{classLabel}</p>
+        <div style={headerStyles.right}>
+          <div style={headerStyles.filtersRow}>
+            <Field label="Année académique">
+              <input
+                style={inputPill}
+                value={selectedYear}
+                onChange={(e) => {
+                  setSelectedYear(e.target.value);
+                  setSelectedClassId("");
+                  setPeriodFrom("");
+                  setPeriodTo("");
+                  setSheet(null);
+                  setStudents([]);
+                  setClassMeta(null);
+                  setMaxHoursPerDay(null);
+                  lastLoadKeyRef.current = "";
+                }}
+                placeholder="Ex: 2025-2026"
+              />
+            </Field>
 
-                <p style={headerStyles.subjectInfo}>
-                  <strong>Cycle :</strong> {cycleLabel}
-                  {" · "}
-                  <strong>Max heures/jour :</strong> {maxLabel}
-                  {" · "}
-                  <strong>Période :</strong> {periodLabel}
-                </p>
+            <Field label="Classe">
+              <select
+                style={inputPill}
+                value={selectedClassId}
+                onChange={(e) => {
+                  setSelectedClassId(e.target.value);
+                  setSheet(null);
+                  setStudents([]);
+                  setClassMeta(null);
+                  setMaxHoursPerDay(null);
+                  lastLoadKeyRef.current = "";
+                }}
+              >
+                <option value="">
+                  {loadingClasses ? "Chargement..." : "-- Sélectionner --"}
+                </option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title || c.abbrev || c.displayName || c.id}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="Période Du (ex: 05 Jan 2025)">
+              <input
+                style={inputPill}
+                type="date"
+                value={periodFrom}
+                onChange={(e) => {
+                  setPeriodFrom(e.target.value);
+                  lastLoadKeyRef.current = "";
+                }}
+              />
+            </Field>
+
+            <Field label="Au (ex: 09 Jan 2025)">
+              <input
+                style={inputPill}
+                type="date"
+                value={periodTo}
+                onChange={(e) => {
+                  setPeriodTo(e.target.value);
+                  lastLoadKeyRef.current = "";
+                }}
+              />
+              <div style={headerStyles.help}>
+                Format: <strong>DD Mmm YYYY</strong> (ex: 05 Jan 2025)
+                <br />
+                Règle: BTS/Ingénieur = <strong>5 jours</strong>, Licence ={" "}
+                <strong>6 jours</strong>.
               </div>
+            </Field>
+          </div>
 
-              <div style={headerStyles.right}>
-                <div style={headerStyles.filtersRow}>
-                  <Field label="Année académique">
-                    <input
-                      style={inputPill}
-                      value={academicYear}
-                      onChange={(e) => {
-                        setAcademicYear(e.target.value);
-                        setSelectedClassId("");
-                        setPeriodFrom("");
-                        setPeriodTo("");
-                        setSheet(null);
-                        setStudents([]);
-                        setClassMeta(null);
-                        setMaxHoursPerDay(null);
-                        lastLoadKeyRef.current = "";
-                      }}
-                      placeholder="Ex: 2025-2026"
-                    />
-                  </Field>
-
-                  <Field label="Classe">
-                    <select
-                      style={inputPill}
-                      value={selectedClassId}
-                      onChange={(e) => {
-                        setSelectedClassId(e.target.value);
-                        setSheet(null);
-                        setStudents([]);
-                        setClassMeta(null);
-                        setMaxHoursPerDay(null);
-                        lastLoadKeyRef.current = "";
-                      }}
-                    >
-                      <option value="">
-                        {loadingClasses ? "Chargement..." : "-- Sélectionner --"}
-                      </option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title || c.abbrev || c.displayName || c.id}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <Field label="Période Du (ex: 05 Jan 2025)">
-                    <input
-                      style={inputPill}
-                      type="date"
-                      value={periodFrom}
-                      onChange={(e) => {
-                        setPeriodFrom(e.target.value);
-                        lastLoadKeyRef.current = "";
-                      }}
-                    />
-                  </Field>
-
-                  <Field label="Au (ex: 09 Jan 2025)">
-                    <input
-                      style={inputPill}
-                      type="date"
-                      value={periodTo}
-                      onChange={(e) => {
-                        setPeriodTo(e.target.value);
-                        lastLoadKeyRef.current = "";
-                      }}
-                    />
-                    <div style={headerStyles.help}>
-                      Format: <strong>DD Mmm YYYY</strong> (ex: 05 Jan 2025)
-                      <br />
-                      Règle: BTS/Ingénieur = <strong>5 jours</strong>, Licence ={" "}
-                      <strong>6 jours</strong>.
-                    </div>
-                  </Field>
-                </div>
-
-                <div style={headerStyles.actionsRow}>
-                  <button
-                    type="button"
-                    style={headerStyles.btnPrimary}
-                    onClick={handleSave}
-                    disabled={saving || loading || !sheet}
-                  >
-                    <Save size={16} />
-                    <span>{saving ? "Enregistrement…" : "Enregistrer"}</span>
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {/* ---------------- Table ---------------- */}
-            <section style={entryStyles.card}>
-              <div style={entryStyles.headerRow}>
-                <div>
-                  <h2 style={entryStyles.title}>Saisie des absences</h2>
-                  <p style={entryStyles.subtitle}>
-                    Saisis les heures d’absence par jour (0 → max/jour selon le cycle).
-                  </p>
-
-                  {!selectedClassId && (
-                    <p style={entryStyles.warn}>Choisis une classe.</p>
-                  )}
-                  {selectedClassId && (!periodFrom || !periodTo) && (
-                    <p style={entryStyles.warn}>Choisis la période (Du / Au).</p>
-                  )}
-                </div>
-              </div>
-
-              <div style={entryStyles.tableWrapper}>
-                {!sheet ? (
-                  <div style={entryStyles.emptyStateBox}>
-                    Renseigne les champs (classe + dates) : la fiche se charge automatiquement.
-                  </div>
-                ) : sortedStudents.length === 0 ? (
-                  <div style={entryStyles.emptyStateBox}>
-                    Aucun étudiant dans cette classe.
-                  </div>
-                ) : (
-                  <table style={entryStyles.table}>
-                    <thead>
-                      <tr>
-                        <th style={entryStyles.thIndex}>#</th>
-                        <th style={entryStyles.thMatricule}>Matricule</th>
-                        <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
-                        {(sheet.dayLabels || []).map((lab, i) => (
-                          <th key={`${lab}-${i}`} style={entryStyles.thDay}>
-                            {lab}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-
-                    <tbody>
-                      {sortedStudents.map((s, idx) => {
-                        const key = keyForStudent(s) || String(idx);
-                        const isActiveRow = activeStudentKey === key;
-
-                        const tdBase = isActiveRow
-                          ? { ...entryStyles.tdBase, ...stylesActiveCell }
-                          : entryStyles.tdBase;
-
-                        return (
-                          <tr key={key} style={isActiveRow ? stylesActiveRow : undefined}>
-                            <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
-                            <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>
-                              {s.matricule || "—"}
-                            </td>
-                            <td style={{ ...entryStyles.tdName, ...tdBase }}>
-                              {(s.fullName || "").toUpperCase()}
-                            </td>
-
-                            {(sheet.dates || []).map((dateISO) => {
-                              const val = getHoursValue(s, dateISO);
-                              const max =
-                                typeof maxHoursPerDay === "number" ? maxHoursPerDay : 8;
-
-                              return (
-                                <td
-                                  key={`${key}-${dateISO}`}
-                                  style={{ ...entryStyles.tdDay, ...tdBase }}
-                                >
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={max}
-                                    step="0.5"
-                                    value={val}
-                                    onChange={(e) => setHoursValue(s, dateISO, e.target.value)}
-                                    onFocus={() => setActiveStudentKey(key)}
-                                    onBlur={() => setActiveStudentKey("")}
-                                    style={{
-                                      ...entryStyles.dayInput,
-                                      ...(isActiveRow ? stylesActiveInput : null),
-                                    }}
-                                    title={`Absence (heures) - ${dateISO}`}
-                                  />
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-
-              <div style={entryStyles.footerRow}>
-                <button
-                  type="button"
-                  style={entryStyles.btnPrimary}
-                  onClick={handleSave}
-                  disabled={saving || loading || !sheet}
-                >
-                  {saving ? "Enregistrement…" : "Enregistrer"}
-                </button>
-              </div>
-            </section>
+          <div style={headerStyles.actionsRow}>
+            <button
+              type="button"
+              style={headerStyles.btnPrimary}
+              onClick={handleSave}
+              disabled={saving || loading || !sheet}
+            >
+              <Save size={16} />
+              <span>{saving ? "Enregistrement…" : "Enregistrer"}</span>
+            </button>
           </div>
         </div>
-      </main>
+      </section>
+
+      {/* ---------------- Table ---------------- */}
+      <section style={entryStyles.card}>
+        <div style={entryStyles.headerRow}>
+          <div>
+            <h2 style={entryStyles.title}>Saisie des absences</h2>
+            <p style={entryStyles.subtitle}>
+              Saisis les heures d’absence par jour (0 → max/jour selon le cycle).
+            </p>
+
+            {!selectedClassId && (
+              <p style={entryStyles.warn}>Choisis une classe.</p>
+            )}
+            {selectedClassId && (!periodFrom || !periodTo) && (
+              <p style={entryStyles.warn}>Choisis la période (Du / Au).</p>
+            )}
+          </div>
+        </div>
+
+        <div style={entryStyles.tableWrapper}>
+          {!sheet ? (
+            <div style={entryStyles.emptyStateBox}>
+              Renseigne les champs (classe + dates) : la fiche se charge automatiquement.
+            </div>
+          ) : sortedStudents.length === 0 ? (
+            <div style={entryStyles.emptyStateBox}>
+              Aucun étudiant dans cette classe.
+            </div>
+          ) : (
+            <table style={entryStyles.table}>
+              <thead>
+                <tr>
+                  <th style={entryStyles.thIndex}>#</th>
+                  <th style={entryStyles.thMatricule}>Matricule</th>
+                  <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
+                  {(sheet.dayLabels || []).map((lab, i) => (
+                    <th key={`${lab}-${i}`} style={entryStyles.thDay}>
+                      {lab}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {sortedStudents.map((s, idx) => {
+                  const key = keyForStudent(s) || String(idx);
+                  const isActiveRow = activeStudentKey === key;
+
+                  const tdBase = isActiveRow
+                    ? { ...entryStyles.tdBase, ...stylesActiveCell }
+                    : entryStyles.tdBase;
+
+                  return (
+                    <tr key={key} style={isActiveRow ? stylesActiveRow : undefined}>
+                      <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
+                      <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>
+                        {s.matricule || "—"}
+                      </td>
+                      <td style={{ ...entryStyles.tdName, ...tdBase }}>
+                        {(s.fullName || "").toUpperCase()}
+                      </td>
+
+                      {(sheet.dates || []).map((dateISO) => {
+                        const val = getHoursValue(s, dateISO);
+                        const max =
+                          typeof maxHoursPerDay === "number" ? maxHoursPerDay : 8;
+
+                        return (
+                          <td
+                            key={`${key}-${dateISO}`}
+                            style={{ ...entryStyles.tdDay, ...tdBase }}
+                          >
+                            <input
+                              type="number"
+                              min={0}
+                              max={max}
+                              step="0.5"
+                              value={val}
+                              onChange={(e) => setHoursValue(s, dateISO, e.target.value)}
+                              onFocus={() => setActiveStudentKey(key)}
+                              onBlur={() => setActiveStudentKey("")}
+                              style={{
+                                ...entryStyles.dayInput,
+                                ...(isActiveRow ? stylesActiveInput : null),
+                              }}
+                              title={`Absence (heures) - ${dateISO}`}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div style={entryStyles.footerRow}>
+          <button
+            type="button"
+            style={entryStyles.btnPrimary}
+            onClick={handleSave}
+            disabled={saving || loading || !sheet}
+          >
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -578,40 +564,6 @@ const stylesActiveCell = {
 
 /* ========================= Styles ========================= */
 
-const styles = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: "1px solid var(--border)",
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
-  pageBody: { flex: 1, overflowY: "auto" },
-  container: {
-    maxWidth: "1600px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 1.5rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.5rem",
-  },
-};
-
 const headerStyles = {
   card: {
     background: "var(--bg)",
@@ -621,6 +573,7 @@ const headerStyles = {
     display: "flex",
     gap: "1rem",
     alignItems: "flex-start",
+    marginBottom: "1.5rem",
   },
   left: { flex: 1, minWidth: 0 },
   right: {

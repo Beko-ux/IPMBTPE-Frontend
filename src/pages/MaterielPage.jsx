@@ -11,8 +11,6 @@ import {
   ArrowUpFromLine, Hammer, FileText, ChevronLeft
 } from "lucide-react";
 import useAppStore from "../store/useAppStore.js";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -92,11 +90,9 @@ const MAIN_TABS = [
 ];
 
 // ══════════════════════════════════════════════════════════
-// COMPOSANT PRINCIPAL
+// COMPOSANT PRINCIPAL (sans barres de navigation)
 // ══════════════════════════════════════════════════════════
-export default function MaterielPage({ currentSection, onNavigate }) {
-  const { academicYear } = useAppStore();
-
+export default function MaterielPage({ academicYear }) {
   const [activeTab, setActiveTab]     = useState("dashboard");
   const [lieux, setLieux]             = useState([]);
   const [catalogue, setCatalogue]     = useState([]);
@@ -163,84 +159,74 @@ export default function MaterielPage({ currentSection, onNavigate }) {
   const nbRepsActives = reparations.filter((r) => !r.retour_effectif).length;
 
   return (
-    <div style={styles.layout}>
-      <aside style={styles.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
-      <main style={styles.right}>
-        <HorizontalNavBar />
-        <div style={styles.pageBody}>
-          <div style={styles.container}>
-            {/* HEADER */}
-            <div style={styles.header}>
-              <div>
-                <h1 style={styles.title}>Gestion du Matériel</h1>
-                <p style={styles.subtitle}>Année académique {academicYear}</p>
-              </div>
-              <button style={styles.refreshBtn} onClick={loadData} title="Actualiser">
-                <RefreshCw size={15} />
-              </button>
-            </div>
-
-            {/* ONGLETS */}
-            <div style={styles.tabsBar}>
-              {MAIN_TABS.map((tab) => {
-                const Icon = tab.icon;
-                const badge =
-                  tab.id === "problemes"   && nbProblemes   > 0 ? nbProblemes   :
-                  tab.id === "prets"       && nbPretsActifs > 0 ? nbPretsActifs :
-                  tab.id === "reparations" && nbRepsActives > 0 ? nbRepsActives :
-                  tab.id === "stock"       && alertes.length > 0 ? alertes.length : null;
-                return (
-                  <button key={tab.id}
-                    style={{ ...styles.tabBtn, ...(activeTab === tab.id ? styles.tabBtnActive : {}) }}
-                    onClick={() => setActiveTab(tab.id)}>
-                    <Icon size={15} /> {tab.label}
-                    {badge && <span style={styles.badge}>{badge}</span>}
-                  </button>
-                );
-              })}
-            </div>
-
-            {loading && <div style={styles.loadingBar}><div style={styles.loadingFill} /></div>}
-
-            {/* CONTENU */}
-            <div style={styles.content}>
-              {activeTab === "dashboard" && (
-                <DashboardTab stats={stats} alertes={alertes} prets={prets}
-                  reparations={reparations} onNavigate={setActiveTab} />
-              )}
-              {activeTab === "catalogue" && (
-                <CatalogueTab catalogue={catalogue} equipements={equipements}
-                  onAdd={() => openModal("catalogue")} onEdit={(i) => openModal("catalogue", i)} />
-              )}
-              {activeTab === "stock" && (
-                <StockTab equipements={equipements} catalogue={catalogue} alertes={alertes}
-                  onAdd={() => openModal("equipement")} showToast={showToast} onRefresh={loadData} />
-              )}
-              {activeTab === "lieux" && (
-                <LieuxTab lieux={lieux} postes={postes} equipements={equipements}
-                  onAddLieu={() => openModal("lieu")} onEditLieu={(l) => openModal("lieu", l)}
-                  onDeleteLieu={(id) => handleDelete("lieu", id)} showToast={showToast} onRefresh={loadData} />
-              )}
-              {activeTab === "mouvements" && (
-                <MouvementsTab equipements={equipements} lieux={lieux}
-                  showToast={showToast} onRefresh={loadData} />
-              )}
-              {activeTab === "problemes" && (
-                <ProblemesTab equipements={equipements} showToast={showToast} onRefresh={loadData} />
-              )}
-              {activeTab === "prets" && (
-                <PretsTab prets={prets} equipements={equipements} showToast={showToast} onRefresh={loadData} />
-              )}
-              {activeTab === "reparations" && (
-                <ReparationsTab reparations={reparations} equipements={equipements}
-                  showToast={showToast} onRefresh={loadData} />
-              )}
-            </div>
-          </div>
+    <div style={styles.container}>
+      {/* HEADER */}
+      <div style={styles.header}>
+        <div>
+          <h1 style={styles.title}>Gestion du Matériel</h1>
+          <p style={styles.subtitle}>Année académique {academicYear}</p>
         </div>
-      </main>
+        <button style={styles.refreshBtn} onClick={loadData} title="Actualiser">
+          <RefreshCw size={15} />
+        </button>
+      </div>
+
+      {/* ONGLETS */}
+      <div style={styles.tabsBar}>
+        {MAIN_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const badge =
+            tab.id === "problemes"   && nbProblemes   > 0 ? nbProblemes   :
+            tab.id === "prets"       && nbPretsActifs > 0 ? nbPretsActifs :
+            tab.id === "reparations" && nbRepsActives > 0 ? nbRepsActives :
+            tab.id === "stock"       && alertes.length > 0 ? alertes.length : null;
+          return (
+            <button key={tab.id}
+              style={{ ...styles.tabBtn, ...(activeTab === tab.id ? styles.tabBtnActive : {}) }}
+              onClick={() => setActiveTab(tab.id)}>
+              <Icon size={15} /> {tab.label}
+              {badge && <span style={styles.badge}>{badge}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {loading && <div style={styles.loadingBar}><div style={styles.loadingFill} /></div>}
+
+      {/* CONTENU */}
+      <div style={styles.content}>
+        {activeTab === "dashboard" && (
+          <DashboardTab stats={stats} alertes={alertes} prets={prets}
+            reparations={reparations} onNavigate={setActiveTab} />
+        )}
+        {activeTab === "catalogue" && (
+          <CatalogueTab catalogue={catalogue} equipements={equipements}
+            onAdd={() => openModal("catalogue")} onEdit={(i) => openModal("catalogue", i)} />
+        )}
+        {activeTab === "stock" && (
+          <StockTab equipements={equipements} catalogue={catalogue} alertes={alertes}
+            onAdd={() => openModal("equipement")} showToast={showToast} onRefresh={loadData} />
+        )}
+        {activeTab === "lieux" && (
+          <LieuxTab lieux={lieux} postes={postes} equipements={equipements}
+            onAddLieu={() => openModal("lieu")} onEditLieu={(l) => openModal("lieu", l)}
+            onDeleteLieu={(id) => handleDelete("lieu", id)} showToast={showToast} onRefresh={loadData} />
+        )}
+        {activeTab === "mouvements" && (
+          <MouvementsTab equipements={equipements} lieux={lieux}
+            showToast={showToast} onRefresh={loadData} />
+        )}
+        {activeTab === "problemes" && (
+          <ProblemesTab equipements={equipements} showToast={showToast} onRefresh={loadData} />
+        )}
+        {activeTab === "prets" && (
+          <PretsTab prets={prets} equipements={equipements} showToast={showToast} onRefresh={loadData} />
+        )}
+        {activeTab === "reparations" && (
+          <ReparationsTab reparations={reparations} equipements={equipements}
+            showToast={showToast} onRefresh={loadData} />
+        )}
+      </div>
 
       {/* TOAST */}
       {toast && (
@@ -1473,36 +1459,13 @@ function DetailRow({ label, val }) {
 }
 
 // ══════════════════════════════════════════════════════════
-// STYLES
+// STYLES (inchangés, mais sans layout général)
 // ══════════════════════════════════════════════════════════
 const styles = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: "1px solid var(--border)",
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
-  pageBody: { flex: 1, overflowY: "auto" },
   container: {
     maxWidth: "1400px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 1.5rem",
+    margin: "0 auto",
+    padding: "1.5rem",
     display: "flex",
     flexDirection: "column",
     gap: "1.5rem",

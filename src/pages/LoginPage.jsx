@@ -203,6 +203,12 @@ export default function LoginPage() {
     }
   };
 
+  // Empêche le copier-coller dans le champ mot de passe
+  const preventCopyPaste = (e) => {
+    e.preventDefault();
+    return false;
+  };
+
   return (
     <div style={{
       position: "relative", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
@@ -272,6 +278,8 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="prenom.nom@universite.edu"
                     required
+                    autoComplete="off"
+                    name="email_login"
                     style={{
                       width: "100%", padding: "14px 16px 14px 48px", borderRadius: 14,
                       border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.05)",
@@ -291,6 +299,11 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
                     required
+                    autoComplete="new-password"
+                    name="password_login"
+                    onCopy={preventCopyPaste}
+                    onCut={preventCopyPaste}
+                    onPaste={preventCopyPaste}
                     style={{
                       width: "100%", padding: "14px 56px 14px 48px", borderRadius: 14,
                       border: "2px solid rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.05)",

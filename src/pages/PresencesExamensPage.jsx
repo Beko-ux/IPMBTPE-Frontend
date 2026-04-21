@@ -1,7 +1,5 @@
 // src/pages/PresencesExamensPage.jsx
-import { useEffect, useMemo, useState, useCallback } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
+import { useEffect, useMemo, useState } from "react";
 import { Printer, Download, ChevronDown, ChevronUp } from "lucide-react";
 
 const API_BASE =
@@ -57,7 +55,7 @@ function getSchoolHeaderHTML() {
   `;
 }
 
-function buildPDFHtml({ cls, filteredStudents, byStudent, viewMode, semester, examType, sessionType, subjects }) {
+function buildPDFHtml({ cls, filteredStudents, viewMode, semester, examType, sessionType, subjects }) {
   const sessionLabel = sessionType === "rattrapage" ? "RATTRAPAGE" : "PRINCIPALE";
   const viewLabel = viewMode === "composed" ? "Ont composé" : "N'ont pas composé";
   const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" });
@@ -67,7 +65,6 @@ function buildPDFHtml({ cls, filteredStudents, byStudent, viewMode, semester, ex
       st?.fullName || `${cleanStr(st?.lastName)} ${cleanStr(st?.firstName)}`.trim()
     ).toUpperCase();
     const matricule = cleanStr(st?.matricule) || "—";
-
     const missingList = (info?.missing || []).map((m) => m.label);
 
     if (viewMode === "composed") {
@@ -79,7 +76,6 @@ function buildPDFHtml({ cls, filteredStudents, byStudent, viewMode, semester, ex
         </tr>
       `;
     } else {
-      // "N'ont pas composé" → on montre les matières manquantes dans une 2ème ligne
       return `
         <tr>
           <td class="col-n">${idx + 1}</td>
@@ -221,7 +217,7 @@ function ClassSection({ cls, byStudent, viewMode, semester, examType, sessionTyp
   }, [cls.students, byStudent, viewMode]);
 
   const handleExportPDF = () => {
-    const html = buildPDFHtml({ cls, filteredStudents, byStudent, viewMode, semester, examType, sessionType, subjects });
+    const html = buildPDFHtml({ cls, filteredStudents, viewMode, semester, examType, sessionType, subjects });
     openPDFWindow(html);
   };
 
@@ -229,7 +225,6 @@ function ClassSection({ cls, byStudent, viewMode, semester, examType, sessionTyp
 
   return (
     <div style={sx.classSection}>
-      {/* ── En-tête de classe ── */}
       <div style={sx.classSectionHeader}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -257,7 +252,6 @@ function ClassSection({ cls, byStudent, viewMode, semester, examType, sessionTyp
         </div>
       </div>
 
-      {/* ── Corps ── */}
       {!collapsed && (
         <div style={sx.classSectionBody}>
           {isLoading ? (
@@ -315,10 +309,10 @@ function ClassSection({ cls, byStudent, viewMode, semester, examType, sessionTyp
 }
 
 /* ─────────────────────────── Page principale ─────────────────────────── */
-export default function PresencesExamensPage({ currentSection = "liste_presence", onNavigate }) {
-  const [academicYear, setAcademicYear] = useState("2025-2026");
+export default function PresencesExamensPage({ academicYear = "2025-2026", onNavigate }) {
+  const [selectedYear, setSelectedYear] = useState(academicYear);
   const [classes, setClasses] = useState([]);
-  const [selectedClassFilter, setSelectedClassFilter] = useState("all"); // "all" ou classId
+  const [selectedClassFilter, setSelectedClassFilter] = useState("all");
   const [semester, setSemester] = useState("S1");
   const [examType, setExamType] = useState("CC");
   const [sessionType, setSessionType] = useState("main");
@@ -332,7 +326,6 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
   const [loadingMatrix, setLoadingMatrix] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // map classId -> map studentId -> { composed, missing }
   const [matrixByClass, setMatrixByClass] = useState({});
 
   const mode = normalizeMode(sessionType);
@@ -344,7 +337,7 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       setErrorMsg("");
       setMatrixByClass({});
       try {
-        const ay = normalizeAcademicYear(academicYear);
+        const ay = normalizeAcademicYear(selectedYear);
         const res = await fetch(`${API_BASE}/classes?year=${encodeURIComponent(ay)}`);
         const data = await res.json();
         const list = Array.isArray(data) ? data : Array.isArray(data?.classes) ? data.classes : [];
@@ -357,9 +350,9 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       }
     };
     load();
-  }, [academicYear]);
+  }, [selectedYear]);
 
-  /* ── 2. Charger les matières (on prend la 1ère classe comme référence, ou on merge) ── */
+  /* ── 2. Charger les matières (première classe comme référence) ── */
   useEffect(() => {
     const load = async () => {
       setLoadingSubjects(true);
@@ -368,13 +361,12 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       setMatrixByClass({});
       setErrorMsg("");
 
-      // On prend les matières de la première classe (même programme pour toutes)
       const refClass = classes[0];
       if (!refClass) { setLoadingSubjects(false); return; }
 
       try {
         const qs = new URLSearchParams();
-        qs.set("academicYear", normalizeAcademicYear(academicYear));
+        qs.set("academicYear", normalizeAcademicYear(selectedYear));
         qs.set("classId", refClass.id);
         qs.set("semester", semester);
         qs.set("examType", examType);
@@ -410,7 +402,7 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       }
     };
     load();
-  }, [classes, academicYear, semester, examType]);
+  }, [classes, selectedYear, semester, examType]);
 
   /* ── 3. examCtx si matières anonymes ── */
   const hasAnonymousSubjects = useMemo(() => subjects.some((s) => !!s.isAnonymous), [subjects]);
@@ -422,7 +414,7 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       const refClass = classes[0];
       try {
         const qs = new URLSearchParams();
-        qs.set("academicYear", normalizeAcademicYear(academicYear));
+        qs.set("academicYear", normalizeAcademicYear(selectedYear));
         qs.set("classId", refClass.id);
         qs.set("semester", semester);
         qs.set("examType", examType);
@@ -436,7 +428,7 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       }
     };
     run();
-  }, [classes, academicYear, semester, examType, hasAnonymousSubjects]);
+  }, [classes, selectedYear, semester, examType, hasAnonymousSubjects]);
 
   /* ── 4. Construire la matrice pour TOUTES les classes ── */
   useEffect(() => {
@@ -450,10 +442,6 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
       setLoadingMatrix(true);
 
       try {
-        // Pour chaque classe, pour chaque matière → fetch sheet
-        // On parallélise par classe (limit 2 classes en même temps)
-        // et par matière (limit 4 par classe)
-
         const buildMatrixForClass = async (cls) => {
           const students = Array.isArray(cls.students) ? cls.students : [];
           const init = {};
@@ -468,7 +456,7 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
             if (!subjectId || !subjectCode) return null;
 
             const qs = new URLSearchParams();
-            qs.set("academicYear", normalizeAcademicYear(academicYear));
+            qs.set("academicYear", normalizeAcademicYear(selectedYear));
             qs.set("classId", cls.id);
             qs.set("semester", semester);
             qs.set("examType", examType);
@@ -508,7 +496,6 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
           return { classId: cls.id, matrix: init };
         };
 
-        // On traite 2 classes en parallèle max
         const classResults = await asyncPool(2, classes, buildMatrixForClass);
 
         const newMatrix = {};
@@ -524,17 +511,16 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
     };
 
     run();
-  }, [classes, subjects, academicYear, semester, examType, sessionType, mode, hasAnonymousSubjects, examCtx?.examId]);
+  }, [classes, subjects, selectedYear, semester, examType, sessionType, mode, hasAnonymousSubjects, examCtx?.examId]);
 
   const isCalculating = loadingClasses || loadingSubjects || loadingMatrix;
 
-  // Classes affichées selon le filtre sélecteur
   const displayedClasses = useMemo(() => {
     if (selectedClassFilter === "all") return classes;
     return classes.filter((c) => c.id === selectedClassFilter);
   }, [classes, selectedClassFilter]);
 
-  /* ── Export PDF global (classes affichées) ── */
+  /* ── Export PDF global ── */
   const handleExportAllPDF = () => {
     if (displayedClasses.length === 0) return;
 
@@ -553,12 +539,10 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
         })
         .filter(Boolean);
 
-      return buildPDFHtml({ cls, filteredStudents, byStudent, viewMode, semester, examType, sessionType, subjects });
+      return buildPDFHtml({ cls, filteredStudents, viewMode, semester, examType, sessionType, subjects });
     });
 
-    // On assemble toutes les sections en un seul document avec page-break
     const combined = allSections.map((html) => {
-      // Extraire le contenu du body pour chaque classe
       const match = html.match(/<body>([\s\S]*?)<\/body>/);
       return match ? match[1] : html;
     }).join('<div style="page-break-before: always;"></div>');
@@ -611,163 +595,148 @@ export default function PresencesExamensPage({ currentSection = "liste_presence"
   };
 
   return (
-    <div style={sx.layout}>
-      <aside style={sx.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
-
-      <main style={sx.right}>
-        <HorizontalNavBar />
-
-        <div style={sx.pageBody}>
-          <div style={sx.container}>
-
-            {/* ── Titre + filtres ── */}
-            <section style={sx.filtersCard}>
-              <div style={sx.filtersTop}>
-                <div>
-                  <h1 style={sx.pageTitle}>Liste de présence — Examens</h1>
-                  <p style={sx.pageSubtitle}>
-                    Sélectionne les paramètres pour afficher les listes par classe.
-                  </p>
-                </div>
-
-                <button
-                  style={{
-                    ...sx.btnPDF,
-                    opacity: isCalculating || displayedClasses.length === 0 ? 0.5 : 1,
-                  }}
-                  onClick={handleExportAllPDF}
-                  disabled={isCalculating || displayedClasses.length === 0}
-                >
-                  <Download size={15} />
-                  <span>PDF — Toutes les classes</span>
-                </button>
-              </div>
-
-              <div style={sx.filtersRow}>
-                <Field label="Année académique">
-                  <input
-                    style={sx.inputPill}
-                    value={academicYear}
-                    onChange={(e) => {
-                      setAcademicYear(e.target.value);
-                      setMatrixByClass({});
-                    }}
-                  />
-                </Field>
-
-                <Field label="Semestre">
-                  <select
-                    style={sx.inputPill}
-                    value={semester}
-                    onChange={(e) => setSemester(e.target.value)}
-                  >
-                    <option value="S1">S1</option>
-                    <option value="S2">S2</option>
-                  </select>
-                </Field>
-
-                <Field label="Type d'examen">
-                  <select
-                    style={sx.inputPill}
-                    value={examType}
-                    onChange={(e) => setExamType(e.target.value)}
-                  >
-                    <option value="CC">CC</option>
-                    <option value="SN">SN</option>
-                    <option value="EXAMEN">EXAMEN</option>
-                  </select>
-                </Field>
-
-                <Field label="Session">
-                  <select
-                    style={sx.inputPill}
-                    value={sessionType}
-                    onChange={(e) => setSessionType(e.target.value)}
-                  >
-                    <option value="main">Principale</option>
-                    <option value="rattrapage">Rattrapage</option>
-                  </select>
-                </Field>
-
-                <Field label="Afficher">
-                  <select
-                    style={{
-                      ...sx.inputPill,
-                      color: viewMode === "missing" ? "#991B1B" : "#065F46",
-                      fontWeight: 700,
-                    }}
-                    value={viewMode}
-                    onChange={(e) => setViewMode(e.target.value)}
-                  >
-                    <option value="missing">N'ont pas composé</option>
-                    <option value="composed">Ont composé</option>
-                  </select>
-                </Field>
-
-                <Field label="Classe">
-                  <select
-                    style={sx.inputPill}
-                    value={selectedClassFilter}
-                    onChange={(e) => setSelectedClassFilter(e.target.value)}
-                    disabled={loadingClasses || classes.length === 0}
-                  >
-                    <option value="all">— Toutes les classes ({classes.length}) —</option>
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.title || c.abbrev || c.displayName || c.id}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              {/* Barre de statut */}
-              {isCalculating && (
-                <div style={sx.statusBar}>
-                  <span style={sx.statusDot} />
-                  {loadingClasses
-                    ? "Chargement des classes…"
-                    : loadingSubjects
-                    ? "Chargement des matières…"
-                    : "Calcul de la matrice de présences (toutes les classes)…"}
-                </div>
-              )}
-
-              {errorMsg && (
-                <div style={sx.errorBar}>{errorMsg}</div>
-              )}
-
-              {!isCalculating && !errorMsg && subjects.length > 0 && (
-                <div style={sx.infoBar}>
-                  {classes.length} classe(s) · {subjects.length} matière(s) chargée(s)
-                </div>
-              )}
-            </section>
-
-            {/* ── Une section par classe ── */}
-            {!loadingClasses && displayedClasses.length === 0 && (
-              <p style={sx.emptyMsg}>Aucune classe trouvée pour cette année académique.</p>
-            )}
-
-            {displayedClasses.map((cls) => (
-              <ClassSection
-                key={cls.id}
-                cls={cls}
-                byStudent={matrixByClass[cls.id] || {}}
-                viewMode={viewMode}
-                semester={semester}
-                examType={examType}
-                sessionType={sessionType}
-                subjects={subjects}
-                isLoading={isCalculating}
-              />
-            ))}
-
+    <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+      {/* ── Filtres ── */}
+      <section style={sx.filtersCard}>
+        <div style={sx.filtersTop}>
+          <div>
+            <h1 style={sx.pageTitle}>Liste de présence — Examens</h1>
+            <p style={sx.pageSubtitle}>
+              Sélectionne les paramètres pour afficher les listes par classe.
+            </p>
           </div>
+
+          <button
+            style={{
+              ...sx.btnPDF,
+              opacity: isCalculating || displayedClasses.length === 0 ? 0.5 : 1,
+            }}
+            onClick={handleExportAllPDF}
+            disabled={isCalculating || displayedClasses.length === 0}
+          >
+            <Download size={15} />
+            <span>PDF — Toutes les classes</span>
+          </button>
         </div>
-      </main>
+
+        <div style={sx.filtersRow}>
+          <Field label="Année académique">
+            <input
+              style={sx.inputPill}
+              value={selectedYear}
+              onChange={(e) => {
+                setSelectedYear(e.target.value);
+                setMatrixByClass({});
+              }}
+            />
+          </Field>
+
+          <Field label="Semestre">
+            <select
+              style={sx.inputPill}
+              value={semester}
+              onChange={(e) => setSemester(e.target.value)}
+            >
+              <option value="S1">S1</option>
+              <option value="S2">S2</option>
+            </select>
+          </Field>
+
+          <Field label="Type d'examen">
+            <select
+              style={sx.inputPill}
+              value={examType}
+              onChange={(e) => setExamType(e.target.value)}
+            >
+              <option value="CC">CC</option>
+              <option value="SN">SN</option>
+              <option value="EXAMEN">EXAMEN</option>
+            </select>
+          </Field>
+
+          <Field label="Session">
+            <select
+              style={sx.inputPill}
+              value={sessionType}
+              onChange={(e) => setSessionType(e.target.value)}
+            >
+              <option value="main">Principale</option>
+              <option value="rattrapage">Rattrapage</option>
+            </select>
+          </Field>
+
+          <Field label="Afficher">
+            <select
+              style={{
+                ...sx.inputPill,
+                color: viewMode === "missing" ? "#991B1B" : "#065F46",
+                fontWeight: 700,
+              }}
+              value={viewMode}
+              onChange={(e) => setViewMode(e.target.value)}
+            >
+              <option value="missing">N'ont pas composé</option>
+              <option value="composed">Ont composé</option>
+            </select>
+          </Field>
+
+          <Field label="Classe">
+            <select
+              style={sx.inputPill}
+              value={selectedClassFilter}
+              onChange={(e) => setSelectedClassFilter(e.target.value)}
+              disabled={loadingClasses || classes.length === 0}
+            >
+              <option value="all">— Toutes les classes ({classes.length}) —</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title || c.abbrev || c.displayName || c.id}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        {isCalculating && (
+          <div style={sx.statusBar}>
+            <span style={sx.statusDot} />
+            {loadingClasses
+              ? "Chargement des classes…"
+              : loadingSubjects
+              ? "Chargement des matières…"
+              : "Calcul de la matrice de présences (toutes les classes)…"}
+          </div>
+        )}
+
+        {errorMsg && (
+          <div style={sx.errorBar}>{errorMsg}</div>
+        )}
+
+        {!isCalculating && !errorMsg && subjects.length > 0 && (
+          <div style={sx.infoBar}>
+            {classes.length} classe(s) · {subjects.length} matière(s) chargée(s)
+          </div>
+        )}
+      </section>
+
+      {/* ── Liste des classes ── */}
+      {!loadingClasses && displayedClasses.length === 0 && (
+        <p style={sx.emptyMsg}>Aucune classe trouvée pour cette année académique.</p>
+      )}
+
+      {displayedClasses.map((cls) => (
+        <ClassSection
+          key={cls.id}
+          cls={cls}
+          byStudent={matrixByClass[cls.id] || {}}
+          viewMode={viewMode}
+          semester={semester}
+          examType={examType}
+          sessionType={sessionType}
+          subjects={subjects}
+          isLoading={isCalculating}
+        />
+      ))}
     </div>
   );
 }
@@ -784,47 +753,15 @@ function Field({ label, children }) {
   );
 }
 
-/* ─────────────────────────── Styles ─────────────────────────── */
+/* ─────────────────────────── Styles (épurés) ─────────────────────────── */
 const sx = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: "1px solid var(--border)",
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
-  pageBody: { flex: 1, overflowY: "auto" },
-  container: {
-    maxWidth: "1600px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 2rem",
-    display: "flex",
-    flexDirection: "column",
-    gap: "1.25rem",
-  },
-
-  /* Filtres */
   filtersCard: {
     background: "var(--bg, #fff)",
     borderRadius: 16,
     border: "1px solid var(--border, #E5E7EB)",
     padding: "1rem 1.25rem",
     boxShadow: "0 4px 16px rgba(17,24,39,.05)",
+    marginBottom: "1.25rem",
   },
   filtersTop: {
     display: "flex",
@@ -848,7 +785,6 @@ const sx = {
     width: "100%",
     boxSizing: "border-box",
   },
-
   statusBar: {
     marginTop: 12,
     display: "flex",
@@ -878,8 +814,6 @@ const sx = {
     color: "#6B7280",
   },
   emptyMsg: { color: "#6B7280", fontSize: ".9rem" },
-
-  /* Boutons */
   btnPDF: {
     display: "inline-flex",
     alignItems: "center",
@@ -907,14 +841,13 @@ const sx = {
     cursor: "pointer",
     flexShrink: 0,
   },
-
-  /* Section par classe */
   classSection: {
     background: "var(--bg, #fff)",
     borderRadius: 16,
     border: "1px solid var(--border, #E5E7EB)",
     overflow: "hidden",
     boxShadow: "0 4px 16px rgba(17,24,39,.04)",
+    marginBottom: "1rem",
   },
   classSectionHeader: {
     display: "flex",
@@ -949,8 +882,6 @@ const sx = {
     overflowX: "auto",
   },
   statusMsg: { margin: 0, color: "#6B7280", fontSize: ".85rem" },
-
-  /* Table */
   table: { width: "100%", borderCollapse: "collapse", fontSize: ".88rem", marginTop: 4 },
   th: {
     padding: "9px 12px",
@@ -964,8 +895,6 @@ const sx = {
   },
   td: { padding: "9px 12px", borderBottom: "1px solid #F3F4F6" },
   trOdd: { background: "#FAFBFC" },
-
-  /* Pills matières manquantes */
   pillsWrap: { display: "flex", flexWrap: "wrap", gap: 5 },
   missingPill: {
     fontSize: ".75rem",

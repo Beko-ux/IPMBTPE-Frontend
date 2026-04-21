@@ -1,5 +1,5 @@
 // src/pages/MatieresPage.jsx
-// ✅ Version finale avec suppression d'une matière (soft delete)
+// ✅ Version corrigée – sans barres de navigation internes
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -8,10 +8,7 @@ import {
   Zap, Package, Sparkles, CheckCircle2, Circle, MoveRight,
   Trash2
 } from "lucide-react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import useAppStore from "../store/useAppStore.js";
-import { getSemesterNumbers, getFullSemesterOptions } from "../utils/semesters";
+import { getSemesterNumbers } from "../utils/semesters";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 const cleanStr = (x) => (x ?? "").toString().trim();
@@ -52,12 +49,7 @@ function semMatchesFilter(subjectSem, filter) {
   return false;
 }
 
-/* ════════════════════════════════════════════════════════
-   PAGE PRINCIPALE
-════════════════════════════════════════════════════════ */
-export default function MatieresPage({ currentSection, onNavigate }) {
-  const { academicYear } = useAppStore?.() ?? { academicYear: "2025-2026" };
-
+export default function MatieresPage({ academicYear = "2025-2026" }) {
   const [classes, setClasses] = useState([]);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState("");
@@ -136,7 +128,7 @@ export default function MatieresPage({ currentSection, onNavigate }) {
 
       let catalog = await apiFetch(`/subjects?${p}`).catch(() => []);
 
-      // ✅ Fallback uniquement si la classe n'a PAS de spécialité
+      // Fallback si aucune spécialité
       const hasSpeciality = !!(specialiteCode || optionCode);
       if (!hasSpeciality && Array.isArray(catalog) && catalog.filter(s => !s.isArchived).length === 0) {
         const p2 = new URLSearchParams();
@@ -350,7 +342,6 @@ export default function MatieresPage({ currentSection, onNavigate }) {
     });
   };
 
-  // ✅ Modification : rechargement complet après sauvegarde
   const handleSaveOverride = async () => {
     if (!editingId || saving) return;
     setSaving(true);
@@ -367,7 +358,6 @@ export default function MatieresPage({ currentSection, onNavigate }) {
         method: "PATCH",
         body: JSON.stringify(body),
       });
-      // Recharger toutes les données pour garantir l'affichage à jour
       await loadInitialSubjects();
       setEditingId(null);
       showToast("ok", "Modifications enregistrées ✓");
@@ -378,7 +368,6 @@ export default function MatieresPage({ currentSection, onNavigate }) {
     }
   };
 
-  // ✅ Modification : rechargement complet après réinitialisation
   const handleReset = async (cs) => {
     if (!cs || !window.confirm("Réinitialiser aux valeurs originales du catalogue ?")) return;
     setSaving(true);
@@ -400,7 +389,6 @@ export default function MatieresPage({ currentSection, onNavigate }) {
     }
   };
 
-  // ✅ Ajout de la suppression (soft delete)
   const handleDelete = async (subject) => {
     const subjectId = subject.classSubject?.subjectId || subject.id;
     if (!subjectId) {
@@ -509,362 +497,356 @@ export default function MatieresPage({ currentSection, onNavigate }) {
     return next;
   });
 
-  /* ════ RENDU (inchangé) ════ */
+  /* ════ RENDU ════ */
   return (
-    <div style={sx.root}>
-      <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      <div style={sx.contentArea}>
-        <HorizontalNavBar
-          title="Matières"
-          subtitle={selectedClass ? `${selectedClass.title} · ${academicYear}` : `Catalogue ${academicYear}`}
-        />
-        <div style={sx.body}>
-          {/* Sidebar */}
-          <aside style={sx.sidebar}>
-            <div style={sx.sideHeader}>
-              <Layers size={13} style={{ color: "var(--ip-teal)", flexShrink: 0 }} />
-              <span>Classes · {academicYear}</span>
+    <div style={{ fontFamily: "var(--font-family)", color: "var(--fg)", height: "100%", display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "256px 1fr", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {/* Sidebar des classes */}
+        <aside style={sx.sidebar}>
+          <div style={sx.sideHeader}>
+            <Layers size={13} style={{ color: "var(--ip-teal)", flexShrink: 0 }} />
+            <span>Classes · {academicYear}</span>
+          </div>
+          {loadingClasses ? (
+            <div style={sx.hint}>Chargement...</div>
+          ) : classesByFiliere.length === 0 ? (
+            <div style={sx.hint}>Aucune classe trouvée</div>
+          ) : classesByFiliere.map(([filiere, cls]) => {
+            const shortFiliere = filiere
+              .replace("Filières de ", "").replace("Filières ", "").replace("filières ", "");
+            const expanded = expandedFilieres.has(filiere);
+            const activeCount = cls.filter((c) => c.active).length;
+            return (
+              <div key={filiere} style={sx.filiereBlock}>
+                <button style={sx.filiereToggle} onClick={() => toggleFiliere(filiere)}>
+                  <div style={sx.filiereLeft}>
+                    {expanded ? <ChevronDown size={12} style={{ color: "var(--ip-gray)" }} /> : <ChevronRight size={12} style={{ color: "var(--ip-gray)" }} />}
+                    <span style={sx.filiereLabel}>{shortFiliere}</span>
+                  </div>
+                  <span style={sx.filiereCount}>{activeCount}/{cls.length}</span>
+                </button>
+                {expanded && cls.map((c) => {
+                  const isSel = selectedClassId === c.id;
+                  return (
+                    <button key={c.id} onClick={() => setSelectedClassId(c.id)}
+                      style={{ ...sx.classBtn, ...(isSel ? sx.classBtnSel : {}) }}>
+                      <div style={{ ...sx.classActiveDot, background: c.active ? "var(--ip-teal)" : "var(--border)" }} />
+                      <div style={sx.classBtnContent}>
+                        <div style={sx.classBtnName}>{c.displayName || c.title}</div>
+                        <div style={sx.classBtnMeta}>
+                          {c.cycle}{c.studyYear ? ` · An ${c.studyYear}` : ""}
+                          {c.studentCount ? ` · ${c.studentCount} ét.` : ""}
+                        </div>
+                      </div>
+                      {isSel && <div style={sx.selIndicator} />}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </aside>
+
+        {/* Contenu principal */}
+        <main style={sx.main}>
+          {toast && (
+            <div style={{ ...sx.toast, ...(toast.type === "ok" ? sx.toastOk : sx.toastErr) }}>
+              {toast.type === "ok" ? <Check size={13} /> : <AlertCircle size={13} />}
+              {toast.msg}
             </div>
-            {loadingClasses ? (
-              <div style={sx.hint}>Chargement...</div>
-            ) : classesByFiliere.length === 0 ? (
-              <div style={sx.hint}>Aucune classe trouvée</div>
-            ) : classesByFiliere.map(([filiere, cls]) => {
-              const shortFiliere = filiere
-                .replace("Filières de ", "").replace("Filières ", "").replace("filières ", "");
-              const expanded = expandedFilieres.has(filiere);
-              const activeCount = cls.filter((c) => c.active).length;
-              return (
-                <div key={filiere} style={sx.filiereBlock}>
-                  <button style={sx.filiereToggle} onClick={() => toggleFiliere(filiere)}>
-                    <div style={sx.filiereLeft}>
-                      {expanded ? <ChevronDown size={12} style={{ color: "var(--ip-gray)" }} /> : <ChevronRight size={12} style={{ color: "var(--ip-gray)" }} />}
-                      <span style={sx.filiereLabel}>{shortFiliere}</span>
-                    </div>
-                    <span style={sx.filiereCount}>{activeCount}/{cls.length}</span>
-                  </button>
-                  {expanded && cls.map((c) => {
-                    const isSel = selectedClassId === c.id;
-                    return (
-                      <button key={c.id} onClick={() => setSelectedClassId(c.id)}
-                        style={{ ...sx.classBtn, ...(isSel ? sx.classBtnSel : {}) }}>
-                        <div style={{ ...sx.classActiveDot, background: c.active ? "var(--ip-teal)" : "var(--border)" }} />
-                        <div style={sx.classBtnContent}>
-                          <div style={sx.classBtnName}>{c.displayName || c.title}</div>
-                          <div style={sx.classBtnMeta}>
-                            {c.cycle}{c.studyYear ? ` · An ${c.studyYear}` : ""}
-                            {c.studentCount ? ` · ${c.studentCount} ét.` : ""}
-                          </div>
-                        </div>
-                        {isSel && <div style={sx.selIndicator} />}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </aside>
+          )}
 
-          <main style={sx.main}>
-            {toast && (
-              <div style={{ ...sx.toast, ...(toast.type === "ok" ? sx.toastOk : sx.toastErr) }}>
-                {toast.type === "ok" ? <Check size={13} /> : <AlertCircle size={13} />}
-                {toast.msg}
+          {!selectedClass ? (
+            <div style={sx.emptyState}>
+              <div style={sx.emptyIcon}><BookOpen size={32} style={{ color: "var(--ip-teal)" }} /></div>
+              <div style={sx.emptyTitle}>Sélectionnez une classe</div>
+              <div style={sx.emptySub}>
+                Choisissez une classe dans le panneau gauche<br />
+                pour gérer ses matières pour {academicYear}.
               </div>
-            )}
-
-            {!selectedClass ? (
-              <div style={sx.emptyState}>
-                <div style={sx.emptyIcon}><BookOpen size={32} style={{ color: "var(--ip-teal)" }} /></div>
-                <div style={sx.emptyTitle}>Sélectionnez une classe</div>
-                <div style={sx.emptySub}>
-                  Choisissez une classe dans le panneau gauche<br />
-                  pour gérer ses matières pour {academicYear}.
-                </div>
-              </div>
-            ) : (
-              <div style={sx.mainContent}>
-                {/* En-tête classe */}
-                <div style={sx.classCard}>
-                  <div style={sx.classCardLeft}>
-                    <div style={sx.classCardTitle}>{selectedClass.title}</div>
-                    <div style={sx.classCardMeta}>
-                      <span>{selectedClass.filiere}</span>
-                      <span style={sx.metaDot} />
-                      <span>{selectedClass.cycle}</span>
-                      {selectedClass.studyYear && (
-                        <><span style={sx.metaDot} /><span>Année {selectedClass.studyYear}</span></>
-                      )}
-                      {!selectedClass.active && <span style={sx.inactivePill}>Inactive</span>}
-                    </div>
-                  </div>
-                  <div style={sx.statsRow}>
-                    <StatBox n={stats.total} label="Total" active={viewTab === "all"} onClick={() => setViewTab("all")} />
-                    <StatBox n={stats.active} label="Activées" color="var(--ip-teal)" active={viewTab === "active"} onClick={() => setViewTab("active")} />
-                    <StatBox n={stats.inactive} label="Non activées" color="var(--ip-gray)" active={viewTab === "inactive"} onClick={() => setViewTab("inactive")} />
-                  </div>
-                  <div style={sx.classCardActions}>
-                    <button style={sx.btnSecondary} onClick={() => setShowBulk(true)}>
-                      <Zap size={13} /> Gestion rapide
-                    </button>
-                    <button style={sx.btnPrimary} onClick={() => setShowAddModal(true)}>
-                      <Plus size={13} /> Ajouter
-                    </button>
-                  </div>
-                </div>
-
-                {/* Onglets vue */}
-                <div style={sx.tabsRow}>
-                  <ViewTab active={viewTab === "all"} onClick={() => setViewTab("all")}>
-                    Catalogue complet ({stats.total})
-                  </ViewTab>
-                  <ViewTab active={viewTab === "active"} color="var(--ip-teal)" onClick={() => setViewTab("active")}>
-                    <CheckCircle2 size={13} /> Activées ({stats.active})
-                  </ViewTab>
-                  <ViewTab active={viewTab === "inactive"} color="var(--ip-gray)" onClick={() => setViewTab("inactive")}>
-                    <Circle size={13} /> Non activées ({stats.inactive})
-                  </ViewTab>
-                </div>
-
-                {/* Barre de filtres */}
-                <div style={sx.filtersBar}>
-                  <div style={sx.searchBox}>
-                    <Search size={13} style={sx.searchIco} />
-                    <input style={sx.searchInput} placeholder="Rechercher matière, code, UE…"
-                      value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
-                    {searchQ && (
-                      <button style={sx.clearBtn} onClick={() => setSearchQ("")}><X size={11} /></button>
+            </div>
+          ) : (
+            <div style={sx.mainContent}>
+              {/* En-tête classe */}
+              <div style={sx.classCard}>
+                <div style={sx.classCardLeft}>
+                  <div style={sx.classCardTitle}>{selectedClass.title}</div>
+                  <div style={sx.classCardMeta}>
+                    <span>{selectedClass.filiere}</span>
+                    <span style={sx.metaDot} />
+                    <span>{selectedClass.cycle}</span>
+                    {selectedClass.studyYear && (
+                      <><span style={sx.metaDot} /><span>Année {selectedClass.studyYear}</span></>
                     )}
+                    {!selectedClass.active && <span style={sx.inactivePill}>Inactive</span>}
                   </div>
-                  <div style={sx.semRow}>
-                    <PillBtn active={!semFilter} onClick={() => setSemFilter("")}>Tous</PillBtn>
-                    {yearSemesters.map((sem) => (
-                      <PillBtn key={sem} active={semFilter === sem} onClick={() => setSemFilter(sem)}>
-                        {sem}
-                        <span style={sx.pillDot} />
-                      </PillBtn>
-                    ))}
-                  </div>
-                  <span style={sx.resultCount}>{filtered.length} matière{filtered.length > 1 ? "s" : ""}</span>
                 </div>
-
-                <div style={sx.semLegend}>
-                  <span style={sx.semLegendDot} /> semestres de cette année ({yearSemesters.join(", ")})
-                  {" · "}autres = années différentes du même cycle
+                <div style={sx.statsRow}>
+                  <StatBox n={stats.total} label="Total" active={viewTab === "all"} onClick={() => setViewTab("all")} />
+                  <StatBox n={stats.active} label="Activées" color="var(--ip-teal)" active={viewTab === "active"} onClick={() => setViewTab("active")} />
+                  <StatBox n={stats.inactive} label="Non activées" color="var(--ip-gray)" active={viewTab === "inactive"} onClick={() => setViewTab("inactive")} />
                 </div>
+                <div style={sx.classCardActions}>
+                  <button style={sx.btnSecondary} onClick={() => setShowBulk(true)}>
+                    <Zap size={13} /> Gestion rapide
+                  </button>
+                  <button style={sx.btnPrimary} onClick={() => setShowAddModal(true)}>
+                    <Plus size={13} /> Ajouter
+                  </button>
+                </div>
+              </div>
 
-                {selectedCodes.size > 0 && (
-                  <div style={sx.activationBar}>
-                    <span style={sx.activationBarCount}>
-                      {selectedCodes.size} matière{selectedCodes.size > 1 ? "s" : ""} sélectionnée{selectedCodes.size > 1 ? "s" : ""}
-                    </span>
-                    <button style={sx.btnGhost} onClick={() => setSelectedCodes(new Set())}>
-                      <X size={13} /> Désélectionner tout
-                    </button>
-                    <button
-                      style={{ ...sx.btnPrimary, background: "var(--ip-teal)" }}
-                      onClick={handleActivateMultiple}
-                      disabled={activatingMultiple}
-                    >
-                      {activatingMultiple ? "Activation…" : `✓ Activer les ${selectedCodes.size} sélectionnées`}
-                    </button>
-                  </div>
-                )}
+              {/* Onglets vue */}
+              <div style={sx.tabsRow}>
+                <ViewTab active={viewTab === "all"} onClick={() => setViewTab("all")}>
+                  Catalogue complet ({stats.total})
+                </ViewTab>
+                <ViewTab active={viewTab === "active"} color="var(--ip-teal)" onClick={() => setViewTab("active")}>
+                  <CheckCircle2 size={13} /> Activées ({stats.active})
+                </ViewTab>
+                <ViewTab active={viewTab === "inactive"} color="var(--ip-gray)" onClick={() => setViewTab("inactive")}>
+                  <Circle size={13} /> Non activées ({stats.inactive})
+                </ViewTab>
+              </div>
 
-                {loadingSubjects ? (
-                  <div style={sx.hint}>Chargement des matières…</div>
-                ) : filtered.length === 0 ? (
-                  <div style={sx.emptyState}>
-                    <div style={sx.emptyTitle}>
-                      {viewTab === "active" ? "Aucune matière activée" :
-                        viewTab === "inactive" ? "Toutes les matières sont activées ✓" :
-                          "Aucune matière"}
-                    </div>
-                    <div style={sx.emptySub}>
-                      {viewTab === "inactive"
-                        ? "Toutes les matières du catalogue sont déjà actives pour cette classe."
-                        : "Ajustez les filtres ou ajoutez des matières depuis le catalogue."}
-                    </div>
+              {/* Barre de filtres */}
+              <div style={sx.filtersBar}>
+                <div style={sx.searchBox}>
+                  <Search size={13} style={sx.searchIco} />
+                  <input style={sx.searchInput} placeholder="Rechercher matière, code, UE…"
+                    value={searchQ} onChange={(e) => setSearchQ(e.target.value)} />
+                  {searchQ && (
+                    <button style={sx.clearBtn} onClick={() => setSearchQ("")}><X size={11} /></button>
+                  )}
+                </div>
+                <div style={sx.semRow}>
+                  <PillBtn active={!semFilter} onClick={() => setSemFilter("")}>Tous</PillBtn>
+                  {yearSemesters.map((sem) => (
+                    <PillBtn key={sem} active={semFilter === sem} onClick={() => setSemFilter(sem)}>
+                      {sem}
+                      <span style={sx.pillDot} />
+                    </PillBtn>
+                  ))}
+                </div>
+                <span style={sx.resultCount}>{filtered.length} matière{filtered.length > 1 ? "s" : ""}</span>
+              </div>
+
+              <div style={sx.semLegend}>
+                <span style={sx.semLegendDot} /> semestres de cette année ({yearSemesters.join(", ")})
+                {" · "}autres = années différentes du même cycle
+              </div>
+
+              {selectedCodes.size > 0 && (
+                <div style={sx.activationBar}>
+                  <span style={sx.activationBarCount}>
+                    {selectedCodes.size} matière{selectedCodes.size > 1 ? "s" : ""} sélectionnée{selectedCodes.size > 1 ? "s" : ""}
+                  </span>
+                  <button style={sx.btnGhost} onClick={() => setSelectedCodes(new Set())}>
+                    <X size={13} /> Désélectionner tout
+                  </button>
+                  <button
+                    style={{ ...sx.btnPrimary, background: "var(--ip-teal)" }}
+                    onClick={handleActivateMultiple}
+                    disabled={activatingMultiple}
+                  >
+                    {activatingMultiple ? "Activation…" : `✓ Activer les ${selectedCodes.size} sélectionnées`}
+                  </button>
+                </div>
+              )}
+
+              {loadingSubjects ? (
+                <div style={sx.hint}>Chargement des matières…</div>
+              ) : filtered.length === 0 ? (
+                <div style={sx.emptyState}>
+                  <div style={sx.emptyTitle}>
+                    {viewTab === "active" ? "Aucune matière activée" :
+                      viewTab === "inactive" ? "Toutes les matières sont activées ✓" :
+                        "Aucune matière"}
                   </div>
-                ) : (
-                  groups.map((group) => {
-                    const key = group.moduleCode || "__none__";
-                    const collapsed = collapsedGroups.has(key);
-                    const activeItems = group.items.filter((s) => s.active).length;
-                    return (
-                      <div key={key} style={sx.group}>
-                        <div style={sx.groupHeader}>
-                          <button style={sx.groupHeaderBtn} onClick={() => toggleGroup(key)}>
-                            <span style={sx.groupChevron}>
-                              {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                            </span>
-                            {group.moduleCode ? (
-                              <>
-                                <span style={sx.ueCode}>{group.moduleCode}</span>
-                                {group.moduleLabel && <span style={sx.ueLabel}>{group.moduleLabel}</span>}
-                              </>
-                            ) : <span style={sx.ueCode}>Sans UE</span>}
-                          </button>
-                          <div style={sx.groupActions}>
-                            <span style={sx.groupStats}>
-                              <span style={sx.groupStatActive}>{activeItems} activée{activeItems > 1 ? "s" : ""}</span>
-                              <span style={sx.groupStatTotal}>/ {group.items.length}</span>
-                            </span>
-                            {activeItems < group.items.length ? (
-                              <button style={sx.groupActionBtn} onClick={() => handleActivateGroup(group.items, true)}>
-                                <CheckCircle2 size={12} /> Tout activer
-                              </button>
-                            ) : (
-                              <button style={{ ...sx.groupActionBtn, ...sx.groupActionBtnOff }} onClick={() => handleActivateGroup(group.items, false)}>
-                                <Circle size={12} /> Tout désactiver
-                              </button>
-                            )}
-                          </div>
+                  <div style={sx.emptySub}>
+                    {viewTab === "inactive"
+                      ? "Toutes les matières du catalogue sont déjà actives pour cette classe."
+                      : "Ajustez les filtres ou ajoutez des matières depuis le catalogue."}
+                  </div>
+                </div>
+              ) : (
+                groups.map((group) => {
+                  const key = group.moduleCode || "__none__";
+                  const collapsed = collapsedGroups.has(key);
+                  const activeItems = group.items.filter((s) => s.active).length;
+                  return (
+                    <div key={key} style={sx.group}>
+                      <div style={sx.groupHeader}>
+                        <button style={sx.groupHeaderBtn} onClick={() => toggleGroup(key)}>
+                          <span style={sx.groupChevron}>
+                            {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                          </span>
+                          {group.moduleCode ? (
+                            <>
+                              <span style={sx.ueCode}>{group.moduleCode}</span>
+                              {group.moduleLabel && <span style={sx.ueLabel}>{group.moduleLabel}</span>}
+                            </>
+                          ) : <span style={sx.ueCode}>Sans UE</span>}
+                        </button>
+                        <div style={sx.groupActions}>
+                          <span style={sx.groupStats}>
+                            <span style={sx.groupStatActive}>{activeItems} activée{activeItems > 1 ? "s" : ""}</span>
+                            <span style={sx.groupStatTotal}>/ {group.items.length}</span>
+                          </span>
+                          {activeItems < group.items.length ? (
+                            <button style={sx.groupActionBtn} onClick={() => handleActivateGroup(group.items, true)}>
+                              <CheckCircle2 size={12} /> Tout activer
+                            </button>
+                          ) : (
+                            <button style={{ ...sx.groupActionBtn, ...sx.groupActionBtnOff }} onClick={() => handleActivateGroup(group.items, false)}>
+                              <Circle size={12} /> Tout désactiver
+                            </button>
+                          )}
                         </div>
+                      </div>
 
-                        {!collapsed && group.items.map((subject) => {
-                          const subKey = `${subject.code}__${subject.semesterMode}`;
-                          const isEditing = editingId === subject.classSubject?.id;
-                          const effLabel = subject.classSubject?.labelOverride || subject.label;
-                          const effCode = subject.classSubject?.codeOverride || subject.code;
-                          const effCredits = subject.classSubject?.creditsOverride ?? subject.credits;
+                      {!collapsed && group.items.map((subject) => {
+                        const subKey = `${subject.code}__${subject.semesterMode}`;
+                        const isEditing = editingId === subject.classSubject?.id;
+                        const effLabel = subject.classSubject?.labelOverride || subject.label;
+                        const effCode = subject.classSubject?.codeOverride || subject.code;
+                        const effCredits = subject.classSubject?.creditsOverride ?? subject.credits;
 
-                          if (isEditing) {
-                            return (
-                              <div key={subKey} style={sx.editRow}>
-                                <div style={sx.editBanner}>
-                                  <Sparkles size={13} />
-                                  <span>Modification pour <strong>{selectedClass.title}</strong> · {academicYear} uniquement</span>
-                                  <span style={sx.editBannerNote}>(catalogue original non modifié)</span>
-                                </div>
-                                <div style={sx.editGrid}>
-                                  <InlineField label="Intitulé" span={2}>
-                                    <input style={sx.input} value={editForm.labelOverride || ""}
-                                      placeholder={subject.originalLabel}
-                                      onChange={(e) => setEditForm((f) => ({ ...f, labelOverride: e.target.value }))} />
-                                  </InlineField>
-                                  <InlineField label="Code ECUE">
-                                    <input style={sx.input} value={editForm.codeOverride || ""}
-                                      placeholder={subject.code}
-                                      onChange={(e) => setEditForm((f) => ({ ...f, codeOverride: e.target.value }))} />
-                                  </InlineField>
-                                  <InlineField label="Crédits">
-                                    <input type="number" min="0" step="0.5" style={sx.input}
-                                      value={editForm.creditsOverride || ""}
-                                      placeholder={subject.credits !== null ? String(subject.credits) : "—"}
-                                      onChange={(e) => setEditForm((f) => ({ ...f, creditsOverride: e.target.value }))} />
-                                  </InlineField>
-                                  <InlineField label="Semestre (report possible)" span={2}>
-                                    <div style={sx.semReportWrap}>
-                                      <select style={{ ...sx.input, flex: 1 }} value={editForm.semesterOverride || ""}
-                                        onChange={(e) => setEditForm((f) => ({ ...f, semesterOverride: e.target.value }))}>
-                                        {allCycleSemesters.map((o) => (
-                                          <option key={o.value} value={o.value}>{o.label}</option>
-                                        ))}
-                                      </select>
-                                      {editForm.semesterOverride !== subject.originalSemester && (
-                                        <div style={sx.reportBadge}>
-                                          <MoveRight size={12} />
-                                          Reporté depuis {subject.originalSemester}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div style={sx.semHint}>
-                                      Semestre prévu dans le catalogue : <strong>{subject.originalSemester}</strong>.
-                                      Vous pouvez le déplacer vers n'importe quel semestre du cycle {selectedClass.cycle}.
-                                    </div>
-                                  </InlineField>
-                                  <InlineField label="Code UE">
-                                    <input style={sx.input} value={editForm.moduleCode || ""} placeholder="Ex: UE1"
-                                      onChange={(e) => setEditForm((f) => ({ ...f, moduleCode: e.target.value }))} />
-                                  </InlineField>
-                                  <InlineField label="Libellé UE">
-                                    <input style={sx.input} value={editForm.moduleLabel || ""} placeholder="Ex: Comptabilité"
-                                      onChange={(e) => setEditForm((f) => ({ ...f, moduleLabel: e.target.value }))} />
-                                  </InlineField>
-                                </div>
-                                <div style={sx.editFooter}>
-                                  <button style={sx.btnGhost} onClick={() => setEditingId(null)}>Annuler</button>
-                                  <button style={sx.btnPrimary} onClick={handleSaveOverride} disabled={saving}>
-                                    {saving ? "Enregistrement…" : "Enregistrer"}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          }
-
+                        if (isEditing) {
                           return (
-                            <div key={subKey}
-                              style={{ ...sx.subjectRow, ...(subject.active ? {} : sx.subjectRowOff), ...(selectedCodes.has(subject.code) ? sx.subjectRowSelected : {}) }}>
-                              {!subject.active && (
-                                <input
-                                  type="checkbox"
-                                  checked={selectedCodes.has(subject.code)}
-                                  onChange={() => toggleSelectCode(subject.code)}
-                                  style={{ cursor: "pointer", flexShrink: 0 }}
-                                  title="Sélectionner pour activation groupée"
-                                />
-                              )}
-                              <button
-                                style={{ ...sx.activateBtn, ...(subject.active ? sx.activateBtnOn : sx.activateBtnOff) }}
-                                onClick={() => handleToggle(subject)}
-                                disabled={saving}
-                                title={subject.active ? "Cliquer pour désactiver" : "Cliquer pour activer"}
-                              >
-                                {subject.active ? (
-                                  <><CheckCircle2 size={14} /> Activée</>
-                                ) : (
-                                  <><Circle size={14} /> Activer</>
-                                )}
-                              </button>
-                              <div style={{
-                                ...sx.codeBadge,
-                                ...(subject.hasOverrides ? sx.codeBadgeEdited : {}),
-                              }}>
-                                {effCode || "—"}
+                            <div key={subKey} style={sx.editRow}>
+                              <div style={sx.editBanner}>
+                                <Sparkles size={13} />
+                                <span>Modification pour <strong>{selectedClass.title}</strong> · {academicYear} uniquement</span>
+                                <span style={sx.editBannerNote}>(catalogue original non modifié)</span>
                               </div>
-                              <div style={sx.subjectInfo}>
-                                <span style={sx.subjectName}>
-                                  {effLabel}
-                                  {subject.hasOverrides && <span style={sx.editedDot} title="Modifié pour cette classe" />}
-                                </span>
-                                <div style={sx.chips}>
-                                  <Chip highlighted={yearSemesters.includes(subject.semesterMode)}>
-                                    {subject.semesterMode}
-                                    {subject.isReported && (
-                                      <span style={sx.reportedTag}> ↗ depuis {subject.originalSemester}</span>
+                              <div style={sx.editGrid}>
+                                <InlineField label="Intitulé" span={2}>
+                                  <input style={sx.input} value={editForm.labelOverride || ""}
+                                    placeholder={subject.originalLabel}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, labelOverride: e.target.value }))} />
+                                </InlineField>
+                                <InlineField label="Code ECUE">
+                                  <input style={sx.input} value={editForm.codeOverride || ""}
+                                    placeholder={subject.code}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, codeOverride: e.target.value }))} />
+                                </InlineField>
+                                <InlineField label="Crédits">
+                                  <input type="number" min="0" step="0.5" style={sx.input}
+                                    value={editForm.creditsOverride || ""}
+                                    placeholder={subject.credits !== null ? String(subject.credits) : "—"}
+                                    onChange={(e) => setEditForm((f) => ({ ...f, creditsOverride: e.target.value }))} />
+                                </InlineField>
+                                <InlineField label="Semestre (report possible)" span={2}>
+                                  <div style={sx.semReportWrap}>
+                                    <select style={{ ...sx.input, flex: 1 }} value={editForm.semesterOverride || ""}
+                                      onChange={(e) => setEditForm((f) => ({ ...f, semesterOverride: e.target.value }))}>
+                                      {allCycleSemesters.map((o) => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                      ))}
+                                    </select>
+                                    {editForm.semesterOverride !== subject.originalSemester && (
+                                      <div style={sx.reportBadge}>
+                                        <MoveRight size={12} />
+                                        Reporté depuis {subject.originalSemester}
+                                      </div>
                                     )}
-                                  </Chip>
-                                  {effCredits != null && <Chip>{effCredits} cr.</Chip>}
-                                  {subject._type === "manual" && <Chip accent>Manuel</Chip>}
-                                </div>
+                                  </div>
+                                  <div style={sx.semHint}>
+                                    Semestre prévu dans le catalogue : <strong>{subject.originalSemester}</strong>.
+                                    Vous pouvez le déplacer vers n'importe quel semestre du cycle {selectedClass.cycle}.
+                                  </div>
+                                </InlineField>
+                                <InlineField label="Code UE">
+                                  <input style={sx.input} value={editForm.moduleCode || ""} placeholder="Ex: UE1"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, moduleCode: e.target.value }))} />
+                                </InlineField>
+                                <InlineField label="Libellé UE">
+                                  <input style={sx.input} value={editForm.moduleLabel || ""} placeholder="Ex: Comptabilité"
+                                    onChange={(e) => setEditForm((f) => ({ ...f, moduleLabel: e.target.value }))} />
+                                </InlineField>
                               </div>
-                              {subject.active && subject.classSubject && (
-                                <div style={sx.rowBtns}>
-                                  <IconBtn title="Modifier (intitulé, code, crédits, report de semestre)" onClick={() => startEdit(subject)}>
-                                    <Edit3 size={13} />
-                                  </IconBtn>
-                                  {subject.hasOverrides && (
-                                    <IconBtn title="Réinitialiser aux valeurs du catalogue" warn onClick={() => handleReset(subject.classSubject)}>
-                                      <RotateCcw size={13} />
-                                    </IconBtn>
-                                  )}
-                                  <IconBtn title="Supprimer cette matière (archivage)" warn onClick={() => handleDelete(subject)}>
-                                    <Trash2 size={13} />
-                                  </IconBtn>
-                                </div>
-                              )}
+                              <div style={sx.editFooter}>
+                                <button style={sx.btnGhost} onClick={() => setEditingId(null)}>Annuler</button>
+                                <button style={sx.btnPrimary} onClick={handleSaveOverride} disabled={saving}>
+                                  {saving ? "Enregistrement…" : "Enregistrer"}
+                                </button>
+                              </div>
                             </div>
                           );
-                        })}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </main>
-        </div>
+                        }
+
+                        return (
+                          <div key={subKey}
+                            style={{ ...sx.subjectRow, ...(subject.active ? {} : sx.subjectRowOff), ...(selectedCodes.has(subject.code) ? sx.subjectRowSelected : {}) }}>
+                            {!subject.active && (
+                              <input
+                                type="checkbox"
+                                checked={selectedCodes.has(subject.code)}
+                                onChange={() => toggleSelectCode(subject.code)}
+                                style={{ cursor: "pointer", flexShrink: 0 }}
+                                title="Sélectionner pour activation groupée"
+                              />
+                            )}
+                            <button
+                              style={{ ...sx.activateBtn, ...(subject.active ? sx.activateBtnOn : sx.activateBtnOff) }}
+                              onClick={() => handleToggle(subject)}
+                              disabled={saving}
+                              title={subject.active ? "Cliquer pour désactiver" : "Cliquer pour activer"}
+                            >
+                              {subject.active ? (
+                                <><CheckCircle2 size={14} /> Activée</>
+                              ) : (
+                                <><Circle size={14} /> Activer</>
+                              )}
+                            </button>
+                            <div style={{
+                              ...sx.codeBadge,
+                              ...(subject.hasOverrides ? sx.codeBadgeEdited : {}),
+                            }}>
+                              {effCode || "—"}
+                            </div>
+                            <div style={sx.subjectInfo}>
+                              <span style={sx.subjectName}>
+                                {effLabel}
+                                {subject.hasOverrides && <span style={sx.editedDot} title="Modifié pour cette classe" />}
+                              </span>
+                              <div style={sx.chips}>
+                                <Chip highlighted={yearSemesters.includes(subject.semesterMode)}>
+                                  {subject.semesterMode}
+                                  {subject.isReported && (
+                                    <span style={sx.reportedTag}> ↗ depuis {subject.originalSemester}</span>
+                                  )}
+                                </Chip>
+                                {effCredits != null && <Chip>{effCredits} cr.</Chip>}
+                                {subject._type === "manual" && <Chip accent>Manuel</Chip>}
+                              </div>
+                            </div>
+                            {subject.active && subject.classSubject && (
+                              <div style={sx.rowBtns}>
+                                <IconBtn title="Modifier (intitulé, code, crédits, report de semestre)" onClick={() => startEdit(subject)}>
+                                  <Edit3 size={13} />
+                                </IconBtn>
+                                {subject.hasOverrides && (
+                                  <IconBtn title="Réinitialiser aux valeurs du catalogue" warn onClick={() => handleReset(subject.classSubject)}>
+                                    <RotateCcw size={13} />
+                                  </IconBtn>
+                                )}
+                                <IconBtn title="Supprimer cette matière (archivage)" warn onClick={() => handleDelete(subject)}>
+                                  <Trash2 size={13} />
+                                </IconBtn>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </main>
       </div>
 
       {showAddModal && (
@@ -898,8 +880,9 @@ export default function MatieresPage({ currentSection, onNavigate }) {
   );
 }
 
-// Le reste des composants (AddModal, BulkModal, Overlay, etc.) reste strictement identique à la version précédente.
-// Pour des raisons de longueur, ils ne sont pas recopiés ici mais doivent être conservés tels quels.
+// Les composants AddModal, BulkModal, Overlay, etc. restent strictement identiques.
+// Ils sont inclus ci-dessous pour que le fichier soit complet.
+
 /* ════════════════════════════════════════════════════════
    MODAL AJOUTER (avec auto-incrément + choix UE)
 ════════════════════════════════════════════════════════ */
@@ -915,12 +898,10 @@ function AddModal({ classId, academicYear, selectedClass, allCycleSemesters, exi
     moduleCode: "", moduleLabel: "", credits: "",
   });
 
-  // ✅ État pour les UE
   const [modules, setModules] = useState([]);
   const [selectedModule, setSelectedModule] = useState("");
   const [autoCode, setAutoCode] = useState("");
 
-  // Charger les modules de la classe
   useEffect(() => {
     if (!selectedClass) return;
     const qs = new URLSearchParams({
@@ -935,7 +916,6 @@ function AddModal({ classId, academicYear, selectedClass, allCycleSemesters, exi
       .catch(() => setModules([]));
   }, [selectedClass]);
 
-  // Générer le code automatiquement quand l'UE change
   useEffect(() => {
     if (!selectedModule) {
       setAutoCode("");
@@ -1000,7 +980,6 @@ function AddModal({ classId, academicYear, selectedClass, allCycleSemesters, exi
       return;
     }
 
-    // Vérifier code
     let finalCode = form.code.trim().toUpperCase();
     if (!selectedModule && !finalCode) {
       showToast("err", "Code ECUE obligatoire (soit via UE soit manuellement)");
@@ -1010,7 +989,6 @@ function AddModal({ classId, academicYear, selectedClass, allCycleSemesters, exi
     if (selectedModule) {
       finalCode = autoCode;
     } else {
-      // Auto-incrément si code existe déjà
       if (existingCodes.has(finalCode)) {
         const match = finalCode.match(/^([A-Za-z]+)(\d+)$/);
         if (match) {
@@ -1324,13 +1302,9 @@ function InlineField({ label, children, span }) {
 }
 
 /* ════════════════════════════════════════════════════════
-   STYLES (inchangés)
+   STYLES
 ════════════════════════════════════════════════════════ */
 const sx = {
-  root: { display: "grid", gridTemplateColumns: "minmax(220px,10%) 1fr", height: "100vh", background: "var(--bg-muted)", overflow: "hidden" },
-  contentArea: { display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" },
-  body: { display: "grid", gridTemplateColumns: "256px 1fr", flex: 1, minHeight: 0, overflow: "hidden" },
-
   sidebar: { borderRight: "1px solid var(--border)", background: "var(--bg)", overflowY: "auto", display: "flex", flexDirection: "column" },
   sideHeader: { display: "flex", alignItems: "center", gap: 7, fontSize: "0.68rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ip-gray)", padding: "14px 14px 10px", borderBottom: "1px solid var(--border)" },
   filiereBlock: { borderBottom: "1px solid var(--border)" },

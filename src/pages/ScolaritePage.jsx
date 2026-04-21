@@ -1,21 +1,19 @@
 // src/pages/ScolaritePage.jsx
-// Version complète et corrigée – prête à copier/coller
+// Version adaptée pour AuthenticatedLayout
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { colors } from "../styles/theme";
 import {
-  LayoutDashboard, Settings, CalendarClock, Users, Banknote,
+  LayoutDashboard, SlidersHorizontal, CalendarClock, Users, Banknote,
   History, BarChart3, ChevronDown, ChevronUp, Save, RefreshCcw,
   AlertCircle, CheckCircle, Clock, Download, Search, X, Eye, Edit3,
   GraduationCap, Wallet, TrendingUp, AlertTriangle, DollarSign,
-  SlidersHorizontal, ArrowUpRight, ArrowDownRight, Minus,
-  CreditCard, PieChart as PieChartIcon, Activity, Users2,
+  ArrowUpRight, ArrowDownRight, Minus,
+  CreditCard, Activity, Users2,
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, RadialBarChart, RadialBar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
@@ -729,7 +727,7 @@ function TranchesTab({ academicYear }) {
   const [mode, setMode]           = useState("filiere"); // "filiere" | "classe"
   const [selFiliere, setSelFiliere] = useState("industrielles");
   const [selClasse, setSelClasse] = useState("");
-  const [selNiveau, setSelNiveau] = useState(""); // Nouveau
+  const [selNiveau, setSelNiveau] = useState("");
   const [savedTranches, setSaved] = useState([]);
   const [editTranches, setEdit]   = useState([]);
   const [editMode, setEditMode]   = useState(false);
@@ -771,7 +769,6 @@ function TranchesTab({ academicYear }) {
   // Calcul du montant de scolarité pour la sélection courante
   const getScolarite = () => {
     if (mode === "filiere") {
-      // On prend la valeur max parmi les niveaux de la filière (ou celui sélectionné)
       const niveaux = config.filieres?.[selFiliere]?.niveaux || {};
       if (selNiveau) {
         return niveaux[selNiveau]?.scolarite || 0;
@@ -1316,7 +1313,6 @@ function PaiementTab({ academicYear }) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess]       = useState(false);
 
-  // Charger tous les étudiants une seule fois
   useEffect(() => {
     fetch(`${API_BASE}/scolarite/classes?year=${academicYear}`)
       .then(r => r.json())
@@ -1327,7 +1323,6 @@ function PaiementTab({ academicYear }) {
       .catch(console.error);
   }, [academicYear]);
 
-  // Suggestions en temps réel
   useEffect(() => {
     if (!searchTerm || searchTerm.length < 2) { setSuggestions([]); return; }
     const q = searchTerm.toLowerCase();
@@ -1385,7 +1380,6 @@ function PaiementTab({ academicYear }) {
       if (!res.ok) { const err = await res.json(); throw new Error(err.error || "Erreur serveur"); }
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-      // Recharger le statut de l'étudiant
       await selectStudent(student);
       setForm(prev => ({ ...prev, montant: "", reference: "", commentaire: "" }));
     } catch (e) { alert("Erreur : " + e.message); }
@@ -1424,7 +1418,6 @@ function PaiementTab({ academicYear }) {
               />
               {searchTerm && <button onClick={() => { setSearchTerm(""); setStudent(null); setSuggestions([]); }} style={{ border: "none", background: "none", cursor: "pointer", color: T.gray }}><X size={14} /></button>}
             </div>
-            {/* Suggestions dropdown */}
             {showSugg && suggestions.length > 0 && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
@@ -1462,7 +1455,6 @@ function PaiementTab({ academicYear }) {
       {/* Profil étudiant */}
       {student && (
         <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16, alignItems: "start" }}>
-          {/* Fiche étudiant */}
           <Card style={{ borderTop: `4px solid ${STATUS[student.status || student.scolariteStatus]?.color || T.teal}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
               <div style={{ width: 44, height: 44, borderRadius: "50%", background: T.tealLt, display: "grid", placeItems: "center" }}>
@@ -1492,7 +1484,6 @@ function PaiementTab({ academicYear }) {
                   <p style={{ margin: "0 0 5px", fontSize: 12, color: T.gray }}>Progression</p>
                   <ProgressBar value={student.progress || 0} />
                 </div>
-                {/* Tranches */}
                 {student.tranches?.length > 0 && (
                   <div style={{ marginTop: 8 }}>
                     <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, color: T.slate }}>État des tranches</p>
@@ -1516,7 +1507,6 @@ function PaiementTab({ academicYear }) {
             )}
           </Card>
 
-          {/* Formulaire paiement */}
           {!student.demissionnaire ? (
             <Card>
               <h3 style={{ margin: "0 0 18px", fontSize: 14, fontWeight: 700, color: T.slate }}>Enregistrer un versement</h3>
@@ -1998,28 +1988,14 @@ function ErrMsg({ msg }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// COMPOSANT PRINCIPAL
+// COMPOSANT PRINCIPAL (adapté pour AuthenticatedLayout)
 // ═══════════════════════════════════════════════════════════════════
-export default function ScolaritePage({ currentSection = "scolarite", onNavigate }) {
+export default function ScolaritePage({ academicYear = "2025-2026", onNavigate }) {
   const [activeTab, setActiveTab]     = useState("dashboard");
-  const [academicYear, setAcademicYear] = useState("2025-2026");
-
-  // Si on arrive depuis la nav latérale sur un sous-onglet spécifique
-  useEffect(() => {
-    const map = {
-      scol_dashboard:  "dashboard",
-      scol_config:     "config",
-      scol_tranches:   "tranches",
-      scol_classes:    "classes",
-      scol_paiement:   "paiement",
-      scol_historique: "historique",
-      scol_stats:      "stats",
-    };
-    if (map[currentSection]) setActiveTab(map[currentSection]);
-  }, [currentSection]);
+  const [selectedYear, setSelectedYear] = useState(academicYear);
 
   const renderTab = () => {
-    const props = { academicYear };
+    const props = { academicYear: selectedYear };
     switch (activeTab) {
       case "dashboard":  return <DashboardTab  {...props} />;
       case "config":     return <ConfigTab     {...props} />;
@@ -2033,66 +2009,54 @@ export default function ScolaritePage({ currentSection = "scolarite", onNavigate
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "252px 1fr", height: "100vh", background: T.bg, overflow: "hidden" }}>
-      {/* Sidebar */}
-      <aside style={{ height: "100%", overflowY: "auto", background: T.card, borderRight: `1px solid ${T.border}` }}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
-
-      {/* Main */}
-      <main style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" }}>
-        <HorizontalNavBar />
-        <div style={{ flex: 1, overflowY: "auto", padding: "1.5rem" }}>
-          {/* Page Header */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 800, color: T.slate, fontFamily: T.font }}>Gestion de Scolarité</h1>
-              <p style={{ margin: "3px 0 0", fontSize: 13, color: T.gray, fontFamily: T.font }}>Suivi des paiements et finances académiques</p>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: T.gray, fontFamily: T.font }}>Année :</label>
-              <input
-                value={academicYear}
-                onChange={e => setAcademicYear(e.target.value)}
-                style={{
-                  height: 36, padding: "0 12px", borderRadius: 9, fontFamily: T.font,
-                  border: `1px solid ${T.border}`, fontSize: 13, background: T.card,
-                  fontWeight: 700, color: T.slate, outline: "none", width: 110,
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Tab Navigation */}
-          <div style={{
-            display: "flex", gap: 4, flexWrap: "wrap",
-            borderBottom: `2px solid ${T.border}`, marginBottom: "1.5rem",
-          }}>
-            {MAIN_TABS.map(tab => {
-              const active = activeTab === tab.id;
-              return (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
-                  display: "inline-flex", alignItems: "center", gap: 7,
-                  padding: "10px 18px", border: "none", cursor: "pointer",
-                  borderRadius: "10px 10px 0 0", fontFamily: T.font,
-                  fontSize: 13, fontWeight: 700,
-                  background: active ? T.teal : "transparent",
-                  color: active ? "#fff" : T.gray,
-                  transition: "all 0.15s",
-                  marginBottom: -2,
-                  borderBottom: active ? "none" : "none",
-                }}>
-                  <tab.Icon size={15} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Tab Content */}
-          {renderTab()}
+    <div style={{ maxWidth: "1600px", margin: "0 auto", fontFamily: T.font }}>
+      {/* Page Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: "1.4rem", fontWeight: 800, color: T.slate }}>Gestion de Scolarité</h1>
+          <p style={{ margin: "3px 0 0", fontSize: 13, color: T.gray }}>Suivi des paiements et finances académiques</p>
         </div>
-      </main>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: T.gray }}>Année :</label>
+          <input
+            value={selectedYear}
+            onChange={e => setSelectedYear(e.target.value)}
+            style={{
+              height: 36, padding: "0 12px", borderRadius: 9,
+              border: `1px solid ${T.border}`, fontSize: 13, background: T.card,
+              fontWeight: 700, color: T.slate, outline: "none", width: 110,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Tab Navigation */}
+      <div style={{
+        display: "flex", gap: 4, flexWrap: "wrap",
+        borderBottom: `2px solid ${T.border}`, marginBottom: "1.5rem",
+      }}>
+        {MAIN_TABS.map(tab => {
+          const active = activeTab === tab.id;
+          return (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+              display: "inline-flex", alignItems: "center", gap: 7,
+              padding: "10px 18px", border: "none", cursor: "pointer",
+              borderRadius: "10px 10px 0 0",
+              fontSize: 13, fontWeight: 700,
+              background: active ? T.teal : "transparent",
+              color: active ? "#fff" : T.gray,
+              transition: "all 0.15s",
+              marginBottom: -2,
+            }}>
+              <tab.Icon size={15} />
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      {renderTab()}
     </div>
   );
 }

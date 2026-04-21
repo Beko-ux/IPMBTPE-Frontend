@@ -1,7 +1,5 @@
 // src/pages/NotesPage.jsx
 import { useEffect, useMemo, useState } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
 import SemesterSelector from "../components/SemesterSelector";
 import { Printer, Lock, LockOpen, BarChart2, Download, Shield, User } from "lucide-react";
 import { getSemesterNumbers } from "../utils/semesters";
@@ -35,7 +33,7 @@ function examTypeLabel(t) {
   return v || "—";
 }
 
-export default function NotesPage({ currentSection = "notes", onNavigate, academicYear = "2025-2026" }) {
+export default function NotesPage({ academicYear = "2025-2026", onNavigate }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -649,372 +647,358 @@ export default function NotesPage({ currentSection = "notes", onNavigate, academ
   const sessionLabel = sessionType === "rattrapage" ? "RATTRAPAGE" : "PRINCIPALE";
 
   return (
-    <div style={styles.layout}>
-      <aside style={styles.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
+    <div style={{ maxWidth: "1600px", margin: "0 auto" }}>
+      <section style={headerStyles.card}>
+        <div style={headerStyles.left}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <h1 style={headerStyles.title}>Gestion des notes</h1>
 
-      <main style={styles.right}>
-        <HorizontalNavBar />
+            <span style={isAnonymousSubject ? pillAnon : pillNom}>
+              {isAnonymousSubject ? <Shield size={14} /> : <User size={14} />}
+              {isAnonymousSubject ? "ANONYME" : "NOMINATIF"}
+            </span>
+          </div>
 
-        <div style={styles.pageBody}>
-          <div style={styles.container}>
-            <section style={headerStyles.card}>
-              <div style={headerStyles.left}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <h1 style={headerStyles.title}>Gestion des notes</h1>
+          <p style={headerStyles.subtitle}>
+            Sélectionnez la classe, le semestre, l'examen, la session et la matière (ECUE).
+          </p>
 
-                  <span style={isAnonymousSubject ? pillAnon : pillNom}>
-                    {isAnonymousSubject ? <Shield size={14} /> : <User size={14} />}
-                    {isAnonymousSubject ? "ANONYME" : "NOMINATIF"}
-                  </span>
-                </div>
+          <p style={headerStyles.badge}>
+            {loading ? "Chargement…" : `${isAnonymousSubject ? anonList.length : sortedStudents.length} ligne(s)`}
+          </p>
 
-                <p style={headerStyles.subtitle}>
-                  Sélectionnez l'année, la classe, le semestre, l'examen, la session et la matière (ECUE).
-                </p>
+          <p style={headerStyles.classInfo}>{classLabel}</p>
 
-                <p style={headerStyles.badge}>
-                  {loading ? "Chargement…" : `${isAnonymousSubject ? anonList.length : sortedStudents.length} ligne(s)`}
-                </p>
+          <div style={headerStyles.metaRow}>
+            <MetaChip title={getSubjectLabel(selectedSubject) || "—"} tone="primary" />
+            <MetaChip title={resolvedSubjectCode || "—"} tone="code" />
+            <MetaChip title={semester || "—"} />
+            <MetaChip title={examTypeLabel(examType)} />
+            <MetaChip title={sessionLabel} />
+            <MetaChip title={locked ? "VERROUILLÉ" : "DÉVERROUILLÉ"} tone={locked ? "danger" : "ok"} />
+            {loadingCatalog && <MetaChip title="Catalogue ECUE…" tone="muted" />}
+          </div>
 
-                <p style={headerStyles.classInfo}>{classLabel}</p>
+          {isAnonymousSubject && (
+            <div style={anonInfoBox}>
+              <div><b>ExamId :</b> {examCtx?.examId || "—"}</div>
+              <div><b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}</div>
+              <div><b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}</div>
+            </div>
+          )}
+        </div>
 
-                <div style={headerStyles.metaRow}>
-                  <MetaChip title={getSubjectLabel(selectedSubject) || "—"} tone="primary" />
-                  <MetaChip title={resolvedSubjectCode || "—"} tone="code" />
-                  <MetaChip title={semester || "—"} />
-                  <MetaChip title={examTypeLabel(examType)} />
-                  <MetaChip title={sessionLabel} />
-                  <MetaChip title={locked ? "VERROUILLÉ" : "DÉVERROUILLÉ"} tone={locked ? "danger" : "ok"} />
-                  {loadingCatalog && <MetaChip title="Catalogue ECUE…" tone="muted" />}
-                </div>
+        <div style={headerStyles.right}>
+          <div style={headerStyles.filtersRow}>
+            <Field label="Classe">
+              <select
+                style={inputPill}
+                value={selectedClassId}
+                onChange={(e) => { setSelectedClassId(e.target.value); setSelectedSubjectId(""); }}
+              >
+                <option value="">{loadingClasses ? "Chargement..." : "-- Sélectionner --"}</option>
+                {classes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title || c.abbrev || c.displayName || c.id}
+                  </option>
+                ))}
+              </select>
+            </Field>
 
-                {isAnonymousSubject && (
-                  <div style={anonInfoBox}>
-                    <div><b>ExamId :</b> {examCtx?.examId || "—"}</div>
-                    <div><b>Évaluation trouvée :</b> {examCtx?.exists ? "Oui" : "Non"}</div>
-                    <div><b>Anonymats disponibles :</b> {examCtx?.hasAnonymous ? "Oui" : "Non"}</div>
-                  </div>
-                )}
-              </div>
+            <Field label="Semestre">
+              <SemesterSelector
+                studyYear={selectedClass?.studyYear}
+                value={semester}
+                onChange={setSemester}
+                cycle={selectedClass?.cycle}
+                includeAll={false}
+                disabled={!selectedClass}
+                style={inputPill}
+              />
+            </Field>
 
-              <div style={headerStyles.right}>
-                <div style={headerStyles.filtersRow}>
-                  {/* Champ "Année académique" supprimé car géré globalement */}
+            <Field label="Examen">
+              <select style={inputPill} value={examType} onChange={(e) => setExamType(e.target.value)} disabled={!selectedClass}>
+                <option value="CC">CC</option>
+                <option value="SN">SN</option>
+                <option value="EXAMEN">EXAMEN</option>
+              </select>
+            </Field>
 
-                  <Field label="Classe">
-                    <select
-                      style={inputPill}
-                      value={selectedClassId}
-                      onChange={(e) => { setSelectedClassId(e.target.value); setSelectedSubjectId(""); }}
-                    >
-                      <option value="">{loadingClasses ? "Chargement..." : "-- Sélectionner --"}</option>
-                      {classes.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title || c.abbrev || c.displayName || c.id}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+            <Field label="Session">
+              <select style={inputPill} value={sessionType} onChange={(e) => setSessionType(e.target.value)} disabled={!selectedClass}>
+                <option value="main">Principale</option>
+                <option value="rattrapage">Rattrapage</option>
+              </select>
+            </Field>
 
-                  <Field label="Semestre">
-                    <SemesterSelector
-                      studyYear={selectedClass?.studyYear}
-                      value={semester}
-                      onChange={setSemester}
-                      cycle={selectedClass?.cycle}
-                      includeAll={false}
-                      disabled={!selectedClass}
-                      style={inputPill}
-                    />
-                  </Field>
+            <Field label="Nom de session">
+              <input
+                style={inputPill}
+                value={sessionName}
+                onChange={(e) => setSessionName(e.target.value)}
+                disabled={!selectedClass}
+                placeholder="SESSION PRINCIPALE"
+              />
+            </Field>
 
-                  <Field label="Examen">
-                    <select style={inputPill} value={examType} onChange={(e) => setExamType(e.target.value)} disabled={!selectedClass}>
-                      <option value="CC">CC</option>
-                      <option value="SN">SN</option>
-                      <option value="EXAMEN">EXAMEN</option>
-                    </select>
-                  </Field>
+            <Field label="Matière (ECUE)">
+              <select
+                style={inputPill}
+                value={selectedSubjectId}
+                onChange={(e) => setSelectedSubjectId(e.target.value)}
+                disabled={!selectedClass || loadingSubjects}
+              >
+                <option value="">
+                  {!selectedClass
+                    ? "Choisir une classe d'abord"
+                    : loadingSubjects
+                    ? "Chargement..."
+                    : "-- Sélectionner --"}
+                </option>
+                {subjects.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {getSubjectLabel(s)}{s.isAnonymous ? " (ANONYME)" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
 
-                  <Field label="Session">
-                    <select style={inputPill} value={sessionType} onChange={(e) => setSessionType(e.target.value)} disabled={!selectedClass}>
-                      <option value="main">Principale</option>
-                      <option value="rattrapage">Rattrapage</option>
-                    </select>
-                  </Field>
+          <div style={headerStyles.topButtons}>
+            <button type="button" style={headerStyles.configBtn} disabled>
+              <Printer size={16} />
+              <span>Imprimer (à venir)</span>
+            </button>
 
-                  <Field label="Nom de session">
-                    <input
-                      style={inputPill}
-                      value={sessionName}
-                      onChange={(e) => setSessionName(e.target.value)}
-                      disabled={!selectedClass}
-                      placeholder="SESSION PRINCIPALE"
-                    />
-                  </Field>
+            <div style={headerStyles.actionsRow}>
+              <button type="button" style={headerStyles.smallBtn} disabled>
+                <BarChart2 size={15} />
+                <span>Statistiques</span>
+              </button>
 
-                  <Field label="Matière (ECUE)">
-                    <select
-                      style={inputPill}
-                      value={selectedSubjectId}
-                      onChange={(e) => setSelectedSubjectId(e.target.value)}
-                      disabled={!selectedClass || loadingSubjects}
-                    >
-                      <option value="">
-                        {!selectedClass
-                          ? "Choisir une classe d'abord"
-                          : loadingSubjects
-                          ? "Chargement..."
-                          : "-- Sélectionner --"}
-                      </option>
-                      {subjects.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {getSubjectLabel(s)}{s.isAnonymous ? " (ANONYME)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
+              <button type="button" style={headerStyles.smallBtn} disabled>
+                <Download size={15} />
+                <span>Exporter</span>
+              </button>
 
-                <div style={headerStyles.topButtons}>
-                  <button type="button" style={headerStyles.configBtn} disabled>
-                    <Printer size={16} />
-                    <span>Imprimer (à venir)</span>
-                  </button>
-
-                  <div style={headerStyles.actionsRow}>
-                    <button type="button" style={headerStyles.smallBtn} disabled>
-                      <BarChart2 size={15} />
-                      <span>Statistiques</span>
-                    </button>
-
-                    <button type="button" style={headerStyles.smallBtn} disabled>
-                      <Download size={15} />
-                      <span>Exporter</span>
-                    </button>
-
-                    {!locked && (
-                      <button
-                        type="button"
-                        style={{
-                          ...headerStyles.lockBtn,
-                          opacity: sessionType === "main" && selectedSubjectId ? 1 : 0.6,
-                          cursor: sessionType === "main" && selectedSubjectId ? "pointer" : "not-allowed",
-                        }}
-                        onClick={handleLock}
-                        disabled={saving || !selectedSubjectId || sessionType !== "main" || !resolvedSubjectCode}
-                        title="Verrouiller les notes de la session principale"
-                      >
-                        <Lock size={16} />
-                        <span>Verrouiller</span>
-                      </button>
-                    )}
-
-                    {locked && sessionType === "main" && (
-                      <button
-                        type="button"
-                        style={{
-                          ...headerStyles.unlockBtn,
-                          opacity: selectedSubjectId ? 1 : 0.6,
-                          cursor: selectedSubjectId ? "pointer" : "not-allowed",
-                        }}
-                        onClick={handleUnlock}
-                        disabled={saving || !selectedSubjectId || !resolvedSubjectCode}
-                        title="Déverrouiller pour modifier les notes"
-                      >
-                        <LockOpen size={16} />
-                        <span>Déverrouiller</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section style={entryStyles.card}>
-              <div style={entryStyles.headerRow}>
-                <div>
-                  <h2 style={entryStyles.title}>
-                    Saisie des notes
-                    {selectedSubject ? ` — ${getSubjectLabel(selectedSubject)}` : ""}
-                    {isAnonymousSubject ? " (ANONYME)" : ""}
-                  </h2>
-                  <p style={entryStyles.subtitle}>
-                    {semester} · {examTypeLabel(examType)} · {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
-                  </p>
-
-                  {!selectedClassId && <p style={entryStyles.warn}>Choisissez d'abord une classe.</p>}
-                  {selectedClassId && !selectedSubjectId && <p style={entryStyles.warn}>Choisissez la matière (ECUE).</p>}
-
-                  {selectedClassId && selectedSubjectId && !resolvedSubjectCode && (
-                    <p style={entryStyles.warn}>
-                      Impossible de déterminer le <b>code ECUE</b>. (Le backend exige subjectCode)
-                    </p>
-                  )}
-
-                  {selectedClassId && selectedSubjectId && locked && sessionType === "main" && (
-                    <p style={{ ...entryStyles.warn, ...styles.warnUnlock }}>
-                      🔒 Cette feuille est verrouillée.{" "}
-                      <button
-                        type="button"
-                        style={styles.inlineUnlockBtn}
-                        onClick={handleUnlock}
-                        disabled={saving}
-                      >
-                        Cliquez ici pour déverrouiller
-                      </button>
-                      {" "}ou passez en <strong>Rattrapage</strong>.
-                    </p>
-                  )}
-
-                  {showAnonWarning && (
-                    <p style={entryStyles.warn}>
-                      Mode ANONYME: aucun anonymat disponible. Va d'abord dans <b>Anonymats</b> → Générer anonymats.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div style={entryStyles.tableWrapper}>
-                {!selectedClassId ? (
-                  <p style={entryStyles.emptyState}>Choisissez une classe.</p>
-                ) : !selectedSubjectId ? (
-                  <p style={entryStyles.emptyState}>Choisissez la matière (ECUE).</p>
-                ) : isAnonymousSubject ? (
-                  anonList.length === 0 ? (
-                    <p style={entryStyles.emptyState}>{loadingAnon ? "Chargement des anonymats…" : "Aucun anonymat disponible."}</p>
-                  ) : (
-                    <table style={entryStyles.table}>
-                      <thead>
-                        <tr>
-                          <th style={entryStyles.thIndex}>#</th>
-                          <th style={thAnon}>Anonymat</th>
-                          <th style={entryStyles.thNote}>Note /{scaleMax}</th>
-                          <th style={entryStyles.thMention}>Mention</th>
-                          <th style={entryStyles.thStatus}>Statut</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {anonList.map((a, idx) => {
-                          const k = cleanStr(a.anonCode) || String(idx);
-                          const val = notes[k] ?? "";
-                          const mention = computeMention(val);
-                          const status = computeStatus(val);
-                          const isActiveRow = activeKey === k;
-                          const isPrefilled = !!preFilled[k] && val !== "";
-                          const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
-
-                          return (
-                            <tr key={k} style={isActiveRow ? stylesActiveRow : undefined}>
-                              <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
-                              <td style={{ ...tdAnon, ...tdBase }}>
-                                <span style={anonBadge}>{k}</span>
-                              </td>
-                              <td style={{ ...entryStyles.tdNote, ...tdBase }}>
-                                <input
-                                  type="number" min={0} max={scaleMax} step="0.25"
-                                  value={val} disabled={!canEdit}
-                                  onChange={(e) => handleNoteChange(k, e.target.value)}
-                                  onFocus={() => setActiveKey(k)}
-                                  onBlur={() => setActiveKey("")}
-                                  style={{
-                                    ...entryStyles.noteInput,
-                                    ...(canEdit ? null : stylesDisabledInput),
-                                    ...(isActiveRow && canEdit ? stylesActiveInput : null),
-                                    ...(!isActiveRow && isPrefilled ? stylesPrefilledInput : null),
-                                  }}
-                                />
-                              </td>
-                              <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
-                              <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )
-                ) : (
-                  sortedStudents.length === 0 ? (
-                    <p style={entryStyles.emptyState}>Aucun étudiant dans cette classe.</p>
-                  ) : (
-                    <table style={entryStyles.table}>
-                      <thead>
-                        <tr>
-                          <th style={entryStyles.thIndex}>#</th>
-                          <th style={entryStyles.thMatricule}>Matricule</th>
-                          <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
-                          <th style={entryStyles.thNote}>Note /{scaleMax}</th>
-                          <th style={entryStyles.thMention}>Mention</th>
-                          <th style={entryStyles.thStatus}>Statut</th>
-                        </tr>
-                      </thead>
-
-                      <tbody>
-                        {sortedStudents.map((s, idx) => {
-                          const key = keyForStudent(s) || String(idx);
-                          const val = notes[key] ?? "";
-                          const mention = computeMention(val);
-                          const status = computeStatus(val);
-                          const isActiveRow = activeKey === key;
-                          const isPrefilled = !!preFilled[key] && val !== "";
-                          const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
-
-                          return (
-                            <tr key={key} style={isActiveRow ? stylesActiveRow : undefined}>
-                              <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
-                              <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>{s.matricule || "—"}</td>
-                              <td style={{ ...entryStyles.tdName, ...tdBase }}>{(s.fullName || "").toUpperCase()}</td>
-                              <td style={{ ...entryStyles.tdNote, ...tdBase }}>
-                                <input
-                                  type="number" min={0} max={scaleMax} step="0.25"
-                                  value={val} disabled={!canEdit}
-                                  onChange={(e) => handleNoteChange(key, e.target.value)}
-                                  onFocus={() => setActiveKey(key)}
-                                  onBlur={() => setActiveKey("")}
-                                  style={{
-                                    ...entryStyles.noteInput,
-                                    ...(canEdit ? null : stylesDisabledInput),
-                                    ...(isActiveRow && canEdit ? stylesActiveInput : null),
-                                    ...(!isActiveRow && isPrefilled ? stylesPrefilledInput : null),
-                                  }}
-                                />
-                              </td>
-                              <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
-                              <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )
-                )}
-              </div>
-
-              <div style={entryStyles.footerRow}>
-                <button type="button" style={entryStyles.btnGhost} onClick={handleCancel}>
-                  Annuler
-                </button>
-
+              {!locked && (
                 <button
                   type="button"
-                  style={entryStyles.btnPrimary}
-                  onClick={handleSave}
-                  disabled={
-                    saving || !selectedClassId || !selectedSubjectId ||
-                    !resolvedSubjectCode || !canEdit ||
-                    (isAnonymousSubject && anonList.length === 0)
-                  }
+                  style={{
+                    ...headerStyles.lockBtn,
+                    opacity: sessionType === "main" && selectedSubjectId ? 1 : 0.6,
+                    cursor: sessionType === "main" && selectedSubjectId ? "pointer" : "not-allowed",
+                  }}
+                  onClick={handleLock}
+                  disabled={saving || !selectedSubjectId || sessionType !== "main" || !resolvedSubjectCode}
+                  title="Verrouiller les notes de la session principale"
                 >
-                  {saving ? "Enregistrement…" : "Enregistrer"}
+                  <Lock size={16} />
+                  <span>Verrouiller</span>
                 </button>
-              </div>
-            </section>
+              )}
+
+              {locked && sessionType === "main" && (
+                <button
+                  type="button"
+                  style={{
+                    ...headerStyles.unlockBtn,
+                    opacity: selectedSubjectId ? 1 : 0.6,
+                    cursor: selectedSubjectId ? "pointer" : "not-allowed",
+                  }}
+                  onClick={handleUnlock}
+                  disabled={saving || !selectedSubjectId || !resolvedSubjectCode}
+                  title="Déverrouiller pour modifier les notes"
+                >
+                  <LockOpen size={16} />
+                  <span>Déverrouiller</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </main>
+      </section>
+
+      <section style={entryStyles.card}>
+        <div style={entryStyles.headerRow}>
+          <div>
+            <h2 style={entryStyles.title}>
+              Saisie des notes
+              {selectedSubject ? ` — ${getSubjectLabel(selectedSubject)}` : ""}
+              {isAnonymousSubject ? " (ANONYME)" : ""}
+            </h2>
+            <p style={entryStyles.subtitle}>
+              {semester} · {examTypeLabel(examType)} · {sessionType === "rattrapage" ? "Rattrapage" : "Session principale"} · Échelle 0–{scaleMax}
+            </p>
+
+            {!selectedClassId && <p style={entryStyles.warn}>Choisissez d'abord une classe.</p>}
+            {selectedClassId && !selectedSubjectId && <p style={entryStyles.warn}>Choisissez la matière (ECUE).</p>}
+
+            {selectedClassId && selectedSubjectId && !resolvedSubjectCode && (
+              <p style={entryStyles.warn}>
+                Impossible de déterminer le <b>code ECUE</b>. (Le backend exige subjectCode)
+              </p>
+            )}
+
+            {selectedClassId && selectedSubjectId && locked && sessionType === "main" && (
+              <p style={{ ...entryStyles.warn, ...styles.warnUnlock }}>
+                🔒 Cette feuille est verrouillée.{" "}
+                <button
+                  type="button"
+                  style={styles.inlineUnlockBtn}
+                  onClick={handleUnlock}
+                  disabled={saving}
+                >
+                  Cliquez ici pour déverrouiller
+                </button>
+                {" "}ou passez en <strong>Rattrapage</strong>.
+              </p>
+            )}
+
+            {showAnonWarning && (
+              <p style={entryStyles.warn}>
+                Mode ANONYME: aucun anonymat disponible. Va d'abord dans <b>Anonymats</b> → Générer anonymats.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div style={entryStyles.tableWrapper}>
+          {!selectedClassId ? (
+            <p style={entryStyles.emptyState}>Choisissez une classe.</p>
+          ) : !selectedSubjectId ? (
+            <p style={entryStyles.emptyState}>Choisissez la matière (ECUE).</p>
+          ) : isAnonymousSubject ? (
+            anonList.length === 0 ? (
+              <p style={entryStyles.emptyState}>{loadingAnon ? "Chargement des anonymats…" : "Aucun anonymat disponible."}</p>
+            ) : (
+              <table style={entryStyles.table}>
+                <thead>
+                  <tr>
+                    <th style={entryStyles.thIndex}>#</th>
+                    <th style={thAnon}>Anonymat</th>
+                    <th style={entryStyles.thNote}>Note /{scaleMax}</th>
+                    <th style={entryStyles.thMention}>Mention</th>
+                    <th style={entryStyles.thStatus}>Statut</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {anonList.map((a, idx) => {
+                    const k = cleanStr(a.anonCode) || String(idx);
+                    const val = notes[k] ?? "";
+                    const mention = computeMention(val);
+                    const status = computeStatus(val);
+                    const isActiveRow = activeKey === k;
+                    const isPrefilled = !!preFilled[k] && val !== "";
+                    const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
+
+                    return (
+                      <tr key={k} style={isActiveRow ? stylesActiveRow : undefined}>
+                        <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
+                        <td style={{ ...tdAnon, ...tdBase }}>
+                          <span style={anonBadge}>{k}</span>
+                        </td>
+                        <td style={{ ...entryStyles.tdNote, ...tdBase }}>
+                          <input
+                            type="number" min={0} max={scaleMax} step="0.25"
+                            value={val} disabled={!canEdit}
+                            onChange={(e) => handleNoteChange(k, e.target.value)}
+                            onFocus={() => setActiveKey(k)}
+                            onBlur={() => setActiveKey("")}
+                            style={{
+                              ...entryStyles.noteInput,
+                              ...(canEdit ? null : stylesDisabledInput),
+                              ...(isActiveRow && canEdit ? stylesActiveInput : null),
+                              ...(!isActiveRow && isPrefilled ? stylesPrefilledInput : null),
+                            }}
+                          />
+                        </td>
+                        <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
+                        <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
+          ) : (
+            sortedStudents.length === 0 ? (
+              <p style={entryStyles.emptyState}>Aucun étudiant dans cette classe.</p>
+            ) : (
+              <table style={entryStyles.table}>
+                <thead>
+                  <tr>
+                    <th style={entryStyles.thIndex}>#</th>
+                    <th style={entryStyles.thMatricule}>Matricule</th>
+                    <th style={entryStyles.thName}>Nom &amp; Prénoms</th>
+                    <th style={entryStyles.thNote}>Note /{scaleMax}</th>
+                    <th style={entryStyles.thMention}>Mention</th>
+                    <th style={entryStyles.thStatus}>Statut</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {sortedStudents.map((s, idx) => {
+                    const key = keyForStudent(s) || String(idx);
+                    const val = notes[key] ?? "";
+                    const mention = computeMention(val);
+                    const status = computeStatus(val);
+                    const isActiveRow = activeKey === key;
+                    const isPrefilled = !!preFilled[key] && val !== "";
+                    const tdBase = isActiveRow ? { ...entryStyles.tdBase, ...stylesActiveCell } : entryStyles.tdBase;
+
+                    return (
+                      <tr key={key} style={isActiveRow ? stylesActiveRow : undefined}>
+                        <td style={{ ...entryStyles.tdIndex, ...tdBase }}>{idx + 1}</td>
+                        <td style={{ ...entryStyles.tdMatricule, ...tdBase }}>{s.matricule || "—"}</td>
+                        <td style={{ ...entryStyles.tdName, ...tdBase }}>{(s.fullName || "").toUpperCase()}</td>
+                        <td style={{ ...entryStyles.tdNote, ...tdBase }}>
+                          <input
+                            type="number" min={0} max={scaleMax} step="0.25"
+                            value={val} disabled={!canEdit}
+                            onChange={(e) => handleNoteChange(key, e.target.value)}
+                            onFocus={() => setActiveKey(key)}
+                            onBlur={() => setActiveKey("")}
+                            style={{
+                              ...entryStyles.noteInput,
+                              ...(canEdit ? null : stylesDisabledInput),
+                              ...(isActiveRow && canEdit ? stylesActiveInput : null),
+                              ...(!isActiveRow && isPrefilled ? stylesPrefilledInput : null),
+                            }}
+                          />
+                        </td>
+                        <td style={{ ...entryStyles.tdMention, ...tdBase }}>{mention}</td>
+                        <td style={{ ...entryStyles.tdStatus, ...tdBase }}>{status}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
+          )}
+        </div>
+
+        <div style={entryStyles.footerRow}>
+          <button type="button" style={entryStyles.btnGhost} onClick={handleCancel}>
+            Annuler
+          </button>
+
+          <button
+            type="button"
+            style={entryStyles.btnPrimary}
+            onClick={handleSave}
+            disabled={
+              saving || !selectedClassId || !selectedSubjectId ||
+              !resolvedSubjectCode || !canEdit ||
+              (isAnonymousSubject && anonList.length === 0)
+            }
+          >
+            {saving ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1058,11 +1042,6 @@ const stylesDisabledInput = { opacity: 0.5, cursor: "not-allowed" };
 /* ========================= Styles ========================= */
 
 const styles = {
-  layout: { display: "grid", gridTemplateColumns: "minmax(220px, 10%) 1fr", width: "100vw", height: "100vh", background: "#f5f6f8", overflow: "hidden" },
-  left: { height: "100%", overflowY: "auto", background: "var(--bg)", borderRight: "1px solid var(--border)" },
-  right: { display: "flex", flexDirection: "column", minWidth: 0, height: "100%", overflow: "hidden", background: "#f5f6f8" },
-  pageBody: { flex: 1, overflowY: "auto" },
-  container: { maxWidth: "1600px", margin: "1.5rem auto", padding: "0 1.5rem 1.5rem", display: "flex", flexDirection: "column", gap: "1.5rem" },
   warnUnlock: { background: "#FEF9C3", border: "1px solid #FDE047", borderRadius: 8, padding: "8px 12px", color: "#854D0E" },
   inlineUnlockBtn: {
     background: "none", border: "none", color: "#B45309",
@@ -1072,7 +1051,7 @@ const styles = {
 };
 
 const headerStyles = {
-  card: { background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", padding: "1rem 1.25rem", display: "flex", gap: "1rem", alignItems: "flex-start", boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)" },
+  card: { background: "var(--bg)", borderRadius: 16, border: "1px solid var(--border)", padding: "1rem 1.25rem", display: "flex", gap: "1rem", alignItems: "flex-start", boxShadow: "0 10px 22px rgba(17, 24, 39, 0.04)", marginBottom: "1.5rem" },
   left: { flex: 1, minWidth: 0 },
   right: { flex: 1.3, minWidth: 0, display: "flex", flexDirection: "column", gap: "0.75rem", alignItems: "flex-end" },
   title: { margin: 0, fontSize: "1.05rem", fontWeight: 800 },

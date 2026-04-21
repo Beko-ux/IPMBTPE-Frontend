@@ -2,7 +2,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { auth } from "../firebase-client";
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  onIdTokenChanged,
+  updateProfile,
+} from "firebase/auth";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -15,7 +21,8 @@ const useAuthStore = create(
       loading: true,
 
       initialize: () => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        // Écouteur d'état d'authentification (user connecté / déconnecté)
+        const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
           if (firebaseUser) {
             try {
               const token = await firebaseUser.getIdToken();
@@ -37,7 +44,19 @@ const useAuthStore = create(
             set({ user: null, token: null, role: null, loading: false });
           }
         });
-        return unsubscribe;
+
+        // ✅ Écouteur de changement de token (rafraîchissement automatique)
+        const unsubToken = onIdTokenChanged(auth, async (firebaseUser) => {
+          if (firebaseUser) {
+            const token = await firebaseUser.getIdToken();
+            set({ token });
+          }
+        });
+
+        return () => {
+          unsubAuth();
+          unsubToken();
+        };
       },
 
       login: async (email, password) => {
