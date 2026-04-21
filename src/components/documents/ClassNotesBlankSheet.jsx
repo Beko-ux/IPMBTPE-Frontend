@@ -341,16 +341,12 @@ export default function ClassNotesBlankSheet({ onClose }) {
 
       setLoadingSubjects(true);
       try {
-        // IMPORTANT :
-        // on colle à la logique de MatieresPage :
-        // groupement principalement par filiere + specialiteCode + studyYear + cycle
         const classFiliere = cleanStr(selectedClass.filiere);
         const classSpecialiteCode = cleanStr(selectedClass.specialiteCode);
         const classCycle = cleanStr(selectedClass.cycle);
         const classStudyYear =
           selectedClass.studyYear != null ? String(selectedClass.studyYear) : "";
 
-        // on ne filtre PAS par academicYear côté backend car certains subjects ne l'ont pas
         const params = new URLSearchParams();
         if (classFiliere) params.set("filiere", classFiliere);
         if (classSpecialiteCode) params.set("specialiteCode", classSpecialiteCode);
@@ -1149,7 +1145,7 @@ function generateReportSheetPDFHTML({
       page-break-after: always;
       position: relative;
       overflow: hidden;
-      padding: 0 0 6mm 0;
+      padding: 0 8mm 6mm 0; /* padding-right ajouté pour décaler le tableau vers l'intérieur */
       box-sizing: border-box;
     }
 
@@ -1227,10 +1223,10 @@ function generateReportSheetPDFHTML({
 
     th, td{
       border:1px solid #000;
-      padding: 3px 4px;
+      padding: 5px 4px;
       height: 20px;
       background: transparent !important;
-      box-sizing: border-box;
+      box-sizing: border-box; /* important pour que largeurs incluent padding/border */
     }
 
     th{
@@ -1244,11 +1240,12 @@ function generateReportSheetPDFHTML({
       vertical-align: middle;
     }
 
+    /* Largeurs des colonnes rééquilibrées pour éviter que "NOMS ET PRENOMS" ne prenne trop d'espace */
     .col-no{ width: 6%; }
-    .col-name{ width: 54%; }
-    .col-small{ width: 10%; }
-    .col-day{ width: 6.666%; }
-    .col-note20{ width: 40%; }
+    .col-name{ width: 45%; }   /* réduit de 54% à 45% */
+    .col-small{ width: 12%; }  /* augmenté de 10% à 12% pour 4 colonnes -> total 6+45+48=99% */
+    .col-day{ width: 8%; }     /* pour 6 jours: 6+45+48=99% */
+    .col-note20{ width: 49%; } /* pour note20: 6+45+49=100% */
 
     .td-left{
       text-align:left;

@@ -1,51 +1,39 @@
 // src/components/VerticalNavBar.jsx
-//
-// Prérequis — ajouter dans index.html <head> :
-// <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-//
-// Usage :
-// <VerticalNavBar currentSection="dashboard" onNavigate={(key) => setSection(key)} />
-
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
   LayoutGrid, Users, GraduationCap, BookOpen, Layers,
   FileText, PenLine, ListChecks, ClipboardCheck, ShieldCheck,
-  BarChart3, Trophy, Settings, LogOut, ChevronDown,
-  Monitor,  // ← icône pour la section Matériel
+  BarChart3, Trophy, LogOut, ChevronDown,
+  Monitor, Shield, User,
 } from "lucide-react";
+import useAuthStore from "../store/useAuthStore";
 
-/* ─────────────────────────────────────────────────────────────
-   PALETTE & TOKENS
-───────────────────────────────────────────────────────────── */
 const C = {
-  teal:       "#0F9B72",
-  tealBg:     "#EAF9F3",
-  tealBd:     "#7ECDB0",
-  tealText:   "#0A7A5A",
-  tealGlow:   "rgba(15,155,114,0.18)",
+  teal: "#0F9B72",
+  tealBg: "#EAF9F3",
+  tealBd: "#7ECDB0",
+  tealText: "#0A7A5A",
+  tealGlow: "rgba(15,155,114,0.18)",
   tealShadow: "rgba(15,155,114,0.30)",
-  fg:         "#1A1D23",
-  fg2:        "#8A92A0",
-  bg:         "#F4F6F9",
-  card:       "#ffffff",
-  bd:         "rgba(0,0,0,0.07)",
+  fg: "#1A1D23",
+  fg2: "#8A92A0",
+  bg: "#F4F6F9",
+  card: "#ffffff",
+  bd: "rgba(0,0,0,0.07)",
 };
 
-/* ─────────────────────────────────────────────────────────────
-   STRUCTURE DE NAVIGATION
-───────────────────────────────────────────────────────────── */
-const NAV_SECTIONS = [
+const ALL_SECTIONS = [
   {
     id: "gestion",
     label: "Gestion",
     Icon: LayoutGrid,
     items: [
-      { key: "dashboard", Icon: LayoutGrid,    label: "Tableau de bord" },
-      { key: "etudiants", Icon: Users,         label: "Étudiants" },
-      { key: "classes",   Icon: GraduationCap, label: "Classes" },
-      { key: "matieres",  Icon: BookOpen,      label: "Matières" },
-      { key: "modules",   Icon: Layers,        label: "UE / Modules" },
-      { key: "documents", Icon: FileText,      label: "Documents" },
+      { key: "dashboard", Icon: LayoutGrid, label: "Tableau de bord" },
+      { key: "etudiants", Icon: Users, label: "Étudiants" },
+      { key: "classes", Icon: GraduationCap, label: "Classes" },
+      { key: "matieres", Icon: BookOpen, label: "Matières" },
+      { key: "modules", Icon: Layers, label: "UE / Modules" },
+      { key: "documents", Icon: FileText, label: "Documents" },
     ],
   },
   {
@@ -53,10 +41,10 @@ const NAV_SECTIONS = [
     label: "Évaluations",
     Icon: PenLine,
     items: [
-      { key: "notes",          Icon: PenLine,        label: "Notes",             hint: "Saisie & PV" },
-      { key: "liste_presence", Icon: ListChecks,     label: "Liste de présence", hint: "Feuilles & exports" },
-      { key: "evaluations",    Icon: ClipboardCheck, label: "Évaluations",       hint: "Anonymat" },
-      { key: "anonymats",      Icon: ShieldCheck,    label: "Anonymats" },
+      { key: "notes", Icon: PenLine, label: "Notes", hint: "Saisie & PV" },
+      { key: "liste_presence", Icon: ListChecks, label: "Liste de présence", hint: "Feuilles & exports" },
+      { key: "evaluations", Icon: ClipboardCheck, label: "Évaluations", hint: "Anonymat" },
+      { key: "anonymats", Icon: ShieldCheck, label: "Anonymats" },
     ],
   },
   {
@@ -64,11 +52,10 @@ const NAV_SECTIONS = [
     label: "Suivi",
     Icon: BarChart3,
     items: [
-      { key: "rapports",  Icon: BarChart3, label: "Rapports" },
-      { key: "scolarite", Icon: Trophy,    label: "Scolarité" },
+      { key: "rapports", Icon: BarChart3, label: "Rapports" },
+      { key: "scolarite", Icon: Trophy, label: "Scolarité" },
     ],
   },
-  // ✅ NOUVELLE SECTION : MATÉRIEL
   {
     id: "materiel",
     label: "Matériel",
@@ -77,11 +64,16 @@ const NAV_SECTIONS = [
       { key: "materiel", Icon: Monitor, label: "Gestion du matériel", hint: "Salles, postes, projecteurs" },
     ],
   },
+  {
+    id: "admin",
+    label: "Administration",
+    Icon: Shield,
+    items: [
+      { key: "admin_users", Icon: Users, label: "Utilisateurs", hint: "Gestion des comptes" },
+    ],
+  },
 ];
 
-/* ─────────────────────────────────────────────────────────────
-   NavItem — un élément du menu
-───────────────────────────────────────────────────────────── */
 function NavItem({ navKey, Icon, label, hint, active, onClick }) {
   const [hovered, setHovered] = useState(false);
 
@@ -108,7 +100,6 @@ function NavItem({ navKey, Icon, label, hint, active, onClick }) {
         transition: "background 140ms ease",
       }}
     >
-      {/* Pill latérale active */}
       {active && (
         <span
           style={{
@@ -124,7 +115,6 @@ function NavItem({ navKey, Icon, label, hint, active, onClick }) {
         />
       )}
 
-      {/* Icône */}
       <span
         style={{
           width: 30,
@@ -143,7 +133,6 @@ function NavItem({ navKey, Icon, label, hint, active, onClick }) {
         <Icon size={13} strokeWidth={2.2} />
       </span>
 
-      {/* Texte */}
       <span style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 1 }}>
         <span
           style={{
@@ -165,7 +154,6 @@ function NavItem({ navKey, Icon, label, hint, active, onClick }) {
         )}
       </span>
 
-      {/* Dot actif */}
       {active && (
         <span
           style={{
@@ -181,11 +169,8 @@ function NavItem({ navKey, Icon, label, hint, active, onClick }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   AccordionSection — section accordéon animée
-───────────────────────────────────────────────────────────── */
 function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigate }) {
-  const bodyRef  = useRef(null);
+  const bodyRef = useRef(null);
   const [height, setHeight] = useState(0);
   const hasActive = section.items.some((i) => i.key === currentSection);
   const highlighted = isOpen || hasActive;
@@ -204,7 +189,6 @@ function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigat
         transition: "border-color 200ms ease",
       }}
     >
-      {/* En-tête accordéon */}
       <button
         onClick={() => onToggle(section.id)}
         style={{
@@ -264,14 +248,12 @@ function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigat
         />
       </button>
 
-      {/* Panneau animé */}
       <div
         style={{
           maxHeight: isOpen ? height + 8 : 0,
           overflow: "hidden",
           opacity: isOpen ? 1 : 0,
-          transition:
-            "max-height 260ms cubic-bezier(.4,0,.2,1), opacity 200ms ease",
+          transition: "max-height 260ms cubic-bezier(.4,0,.2,1), opacity 200ms ease",
         }}
       >
         <div ref={bodyRef} style={{ padding: "0 6px 6px" }}>
@@ -292,9 +274,6 @@ function AccordionSection({ section, isOpen, currentSection, onToggle, onNavigat
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   FooterButton
-───────────────────────────────────────────────────────────── */
 function FooterButton({ Icon, label, onClick }) {
   const [hovered, setHovered] = useState(false);
 
@@ -327,38 +306,39 @@ function FooterButton({ Icon, label, onClick }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   COMPOSANT PRINCIPAL
-───────────────────────────────────────────────────────────── */
-export default function VerticalNavBar({
-  currentSection = "dashboard",
-  onNavigate,
-}) {
-  // Trouve la section parente de la page active
-  const findParent = useCallback((key) => {
-    for (const sec of NAV_SECTIONS) {
-      if (sec.items.some((i) => i.key === key)) return sec.id;
-    }
-    return null;
-  }, []);
+export default function VerticalNavBar({ currentSection = "profile", onNavigate }) {
+  const { role, logout, canAccess } = useAuthStore();
 
-  const [openSection, setOpenSection] = useState(
-    () => findParent(currentSection) ?? NAV_SECTIONS[0].id
+  const NAV_SECTIONS = ALL_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => canAccess(item.key)),
+  })).filter((section) => section.items.length > 0);
+
+  const findParent = useCallback(
+    (key) => {
+      for (const sec of NAV_SECTIONS) {
+        if (sec.items.some((i) => i.key === key)) return sec.id;
+      }
+      return null;
+    },
+    [NAV_SECTIONS]
   );
 
-  // Synchronise si currentSection change de l'extérieur
+  const [openSection, setOpenSection] = useState(
+    () => findParent(currentSection) ?? (NAV_SECTIONS[0]?.id || null)
+  );
+
   useEffect(() => {
     const parent = findParent(currentSection);
     if (parent) setOpenSection(parent);
   }, [currentSection, findParent]);
 
-  const handleToggle = (id) =>
-    setOpenSection((prev) => (prev === id ? null : id));
-
-  const handleNavigate = useCallback(
-    (key) => onNavigate?.(key),
-    [onNavigate]
-  );
+  const handleToggle = (id) => setOpenSection((prev) => (prev === id ? null : id));
+  const handleNavigate = useCallback((key) => onNavigate?.(key), [onNavigate]);
+  const handleLogout = async () => {
+    await logout();
+    onNavigate?.("dashboard");
+  };
 
   return (
     <aside
@@ -374,7 +354,6 @@ export default function VerticalNavBar({
         boxSizing: "border-box",
       }}
     >
-      {/* ── En-tête ── */}
       <div
         style={{
           display: "flex",
@@ -400,16 +379,11 @@ export default function VerticalNavBar({
           <GraduationCap size={17} color="#fff" strokeWidth={2.4} />
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 10, color: C.fg2, fontWeight: 500, lineHeight: "14px" }}>
-            Système de
-          </div>
-          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.fg, lineHeight: "18px" }}>
-            Scolarité
-          </div>
+          <div style={{ fontSize: 10, color: C.fg2, fontWeight: 500, lineHeight: "14px" }}>IPMBTPE</div>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: C.fg, lineHeight: "18px" }}>Scolarité</div>
         </div>
       </div>
 
-      {/* ── Accordéon ── */}
       <div
         style={{
           flex: 1,
@@ -433,7 +407,6 @@ export default function VerticalNavBar({
         ))}
       </div>
 
-      {/* ── Pied de page ── */}
       <div
         style={{
           padding: 8,
@@ -445,16 +418,8 @@ export default function VerticalNavBar({
           background: "rgba(0,0,0,0.01)",
         }}
       >
-        <FooterButton
-          Icon={Settings}
-          label="Paramètres"
-          onClick={() => handleNavigate("settings")}
-        />
-        <FooterButton
-          Icon={LogOut}
-          label="Déconnexion"
-          onClick={() => handleNavigate("logout")}
-        />
+        <FooterButton Icon={User} label="Mon profil" onClick={() => handleNavigate("profile")} />
+        <FooterButton Icon={LogOut} label="Déconnexion" onClick={handleLogout} />
       </div>
     </aside>
   );

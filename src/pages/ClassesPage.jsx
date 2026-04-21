@@ -1,7 +1,5 @@
 // src/pages/ClassesPage.jsx
 import { useEffect, useMemo, useState } from "react";
-import VerticalNavBar from "../components/VerticalNavBar.jsx";
-import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
 import { colors } from "../styles/theme";
 import { Users, Crown, Download } from "lucide-react";
 
@@ -334,7 +332,7 @@ function exportBulkToPDF(classesList, cycleFilter, bulkLevel) {
   w.document.close();
 }
 
-export default function ClassesPage({ currentSection = "classes", onNavigate, academicYear = "2025-2026" }) {
+export default function ClassesPage({ academicYear = "2025-2026" }) {
   const [classes, setClasses] = useState([]);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -473,177 +471,166 @@ export default function ClassesPage({ currentSection = "classes", onNavigate, ac
   };
 
   return (
-    <div style={sx.layout}>
-      <aside style={sx.left}>
-        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      </aside>
-
-      <main style={sx.right}>
-        <HorizontalNavBar />
-        <div style={sx.pageBody}>
-          <div style={sx.container}>
-            <header style={sx.pageHeader}>
-              <div>
-                <h1 style={sx.pageTitle}>Gestion des Classes</h1>
-                <p style={sx.pageSubtitle}>
-                  Organisation des classes, délégués et bureau des élèves
-                </p>
-              </div>
-            </header>
-
-            {/* Section Année académique supprimée – maintenant gérée globalement */}
-
-            <section style={sx.statsRow}>
-              <StatCard
-                label="Classes actives"
-                value={stats.classesActives}
-                helper="Année en cours"
-              />
-              <StatCard
-                label="Délégués de classe"
-                value={stats.delegates}
-                helper="Représentants élus"
-              />
-              <StatCard
-                label="Bureau des élèves"
-                value={stats.bureau}
-                helper="Membres actifs"
-              />
-              <StatCard
-                label="Étudiants actifs"
-                value={stats.actifs}
-                helper="Tous niveaux"
-              />
-            </section>
-
-            <section style={sx.filtersCard}>
-              <p style={sx.filtersTitle}>Filtres</p>
-              <p style={sx.filtersSub}>
-                Affiner la recherche de classes et d&apos;étudiants
-              </p>
-
-              <div style={sx.filtersRow}>
-                <div style={sx.filterCol}>
-                  <input
-                    style={sx.searchInput}
-                    placeholder="Rechercher un étudiant ou une classe…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-
-                <div style={sx.filterCol}>
-                  <select
-                    style={sx.select}
-                    value={filiereFilter}
-                    onChange={(e) => setFiliereFilter(e.target.value)}
-                  >
-                    <option value="all">Toutes les filières</option>
-                    <option value="industriel">Filières industrielles</option>
-                    <option value="gestion">Filières de gestion</option>
-                    <option value="juridique">
-                      Filières carrières juridiques
-                    </option>
-                  </select>
-                </div>
-
-                <div style={sx.filterCol}>
-                  <select
-                    style={sx.select}
-                    value={cycleFilter}
-                    onChange={(e) => {
-                      setCycleFilter(e.target.value);
-                      setBulkLevel("all");
-                    }}
-                  >
-                    <option value="all">Toutes les promotions</option>
-                    <option value="BTS">BTS</option>
-                    <option value="LICENCE">Licence</option>
-                    <option value="MASTER">Master</option>
-                    <option value="INGÉNIEUR">Ingénieur</option>
-                  </select>
-                </div>
-
-                <button
-                  type="button"
-                  style={sx.resetBtn}
-                  onClick={() => {
-                    setSearch("");
-                    setFiliereFilter("all");
-                    setCycleFilter("all");
-                    setBulkLevel("all");
-                  }}
-                >
-                  Réinitialiser
-                </button>
-              </div>
-
-              <div style={sx.bulkExportRow}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={sx.bulkLabel}>Exporter plusieurs classes :</span>
-                  <select
-                    style={sx.selectSmall}
-                    value={bulkLevel}
-                    onChange={(e) => setBulkLevel(e.target.value)}
-                    disabled={levelOptions.length === 0}
-                  >
-                    <option value="all">Tous les niveaux</option>
-                    {levelOptions.map((lvl) => (
-                      <option key={lvl} value={lvl}>
-                        {lvl}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    style={sx.bulkExportBtn}
-                    onClick={handleBulkExportPDF}
-                  >
-                    <Download size={16} />
-                    <span>PDF classes filtrées</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    style={sx.bulkExportBtnGhost}
-                    onClick={handleBulkExportCSV}
-                  >
-                    <Download size={16} />
-                    <span>CSV classes filtrées</span>
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {loading && (
-                <p style={{ fontSize: ".9rem", color: "var(--ip-gray)" }}>
-                  Chargement des classes…
-                </p>
-              )}
-
-              {!loading && filteredClasses.length === 0 && (
-                <p style={{ fontSize: ".9rem", color: "var(--ip-gray)" }}>
-                  Aucune classe trouvée avec ces filtres.
-                </p>
-              )}
-
-              {!loading &&
-                filteredClasses.map((cls) => (
-                  <ClassCard key={cls.id} cls={cls} />
-                ))}
-            </section>
+    <div style={{ fontFamily: "var(--font-family)", color: "var(--fg)" }}>
+      <div style={sx.container}>
+        <header style={sx.pageHeader}>
+          <div>
+            <h1 style={sx.pageTitle}>Gestion des Classes</h1>
+            <p style={sx.pageSubtitle}>
+              Organisation des classes, délégués et bureau des élèves
+            </p>
           </div>
-        </div>
-      </main>
+        </header>
+
+        <section style={sx.statsRow}>
+          <StatCard
+            label="Classes actives"
+            value={stats.classesActives}
+            helper="Année en cours"
+          />
+          <StatCard
+            label="Délégués de classe"
+            value={stats.delegates}
+            helper="Représentants élus"
+          />
+          <StatCard
+            label="Bureau des élèves"
+            value={stats.bureau}
+            helper="Membres actifs"
+          />
+          <StatCard
+            label="Étudiants actifs"
+            value={stats.actifs}
+            helper="Tous niveaux"
+          />
+        </section>
+
+        <section style={sx.filtersCard}>
+          <p style={sx.filtersTitle}>Filtres</p>
+          <p style={sx.filtersSub}>
+            Affiner la recherche de classes et d&apos;étudiants
+          </p>
+
+          <div style={sx.filtersRow}>
+            <div style={sx.filterCol}>
+              <input
+                style={sx.searchInput}
+                placeholder="Rechercher un étudiant ou une classe…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div style={sx.filterCol}>
+              <select
+                style={sx.select}
+                value={filiereFilter}
+                onChange={(e) => setFiliereFilter(e.target.value)}
+              >
+                <option value="all">Toutes les filières</option>
+                <option value="industriel">Filières industrielles</option>
+                <option value="gestion">Filières de gestion</option>
+                <option value="juridique">
+                  Filières carrières juridiques
+                </option>
+              </select>
+            </div>
+
+            <div style={sx.filterCol}>
+              <select
+                style={sx.select}
+                value={cycleFilter}
+                onChange={(e) => {
+                  setCycleFilter(e.target.value);
+                  setBulkLevel("all");
+                }}
+              >
+                <option value="all">Toutes les promotions</option>
+                <option value="BTS">BTS</option>
+                <option value="LICENCE">Licence</option>
+                <option value="MASTER">Master</option>
+                <option value="INGÉNIEUR">Ingénieur</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              style={sx.resetBtn}
+              onClick={() => {
+                setSearch("");
+                setFiliereFilter("all");
+                setCycleFilter("all");
+                setBulkLevel("all");
+              }}
+            >
+              Réinitialiser
+            </button>
+          </div>
+
+          <div style={sx.bulkExportRow}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={sx.bulkLabel}>Exporter plusieurs classes :</span>
+              <select
+                style={sx.selectSmall}
+                value={bulkLevel}
+                onChange={(e) => setBulkLevel(e.target.value)}
+                disabled={levelOptions.length === 0}
+              >
+                <option value="all">Tous les niveaux</option>
+                {levelOptions.map((lvl) => (
+                  <option key={lvl} value={lvl}>
+                    {lvl}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                style={sx.bulkExportBtn}
+                onClick={handleBulkExportPDF}
+              >
+                <Download size={16} />
+                <span>PDF classes filtrées</span>
+              </button>
+
+              <button
+                type="button"
+                style={sx.bulkExportBtnGhost}
+                onClick={handleBulkExportCSV}
+              >
+                <Download size={16} />
+                <span>CSV classes filtrées</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {loading && (
+            <p style={{ fontSize: ".9rem", color: "var(--ip-gray)" }}>
+              Chargement des classes…
+            </p>
+          )}
+
+          {!loading && filteredClasses.length === 0 && (
+            <p style={{ fontSize: ".9rem", color: "var(--ip-gray)" }}>
+              Aucune classe trouvée avec ces filtres.
+            </p>
+          )}
+
+          {!loading &&
+            filteredClasses.map((cls) => (
+              <ClassCard key={cls.id} cls={cls} />
+            ))}
+        </section>
+      </div>
     </div>
   );
 }
 
-/* --- composants secondaires & styles (inchangés) --- */
+/* --- composants secondaires & styles --- */
 function StatCard({ label, value, helper }) {
   return (
     <div style={sx.statCard}>
@@ -757,33 +744,10 @@ function ClassCard({ cls }) {
 }
 
 const sx = {
-  layout: {
-    display: "grid",
-    gridTemplateColumns: "minmax(220px, 10%) 1fr",
-    width: "100vw",
-    height: "100vh",
-    background: "#f5f6f8",
-    overflow: "hidden",
-  },
-  left: {
-    height: "100%",
-    overflowY: "auto",
-    background: "var(--bg)",
-    borderRight: `1px solid ${colors.border}`,
-  },
-  right: {
-    display: "flex",
-    flexDirection: "column",
-    minWidth: 0,
-    height: "100%",
-    overflow: "hidden",
-    background: "#f5f6f8",
-  },
-  pageBody: { flex: 1, overflowY: "auto" },
   container: {
     maxWidth: "1600px",
-    margin: "1.5rem auto",
-    padding: "0 1.5rem 1.5rem",
+    margin: "0 auto",
+    padding: "1.5rem",
     display: "flex",
     flexDirection: "column",
     gap: "1.5rem",

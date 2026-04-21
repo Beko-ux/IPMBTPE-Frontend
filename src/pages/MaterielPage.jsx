@@ -3,12 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Monitor, Package, Plus, ChevronDown, ChevronRight,
   Edit3, Trash2, CheckCircle2, Circle, X, Eye, Calendar, User,
-  AlertCircle, Check, Layers, Projector, Building2, Clock,
-  Printer, ClipboardList, Wrench, Video, Plug, FolderTree, Battery
+  AlertCircle, Check, Layers, Building2, Clock,
+  Printer, ClipboardList, Wrench, Video, Plug, FolderTree, Battery,
+  Box, TrendingUp, AlertTriangle, Archive, ArrowRightLeft,
+  Search, BarChart3, RefreshCw, MapPin, History, ShieldAlert,
+  BookMarked, Boxes, BadgeAlert, CircleCheck, ArrowDownToLine,
+  ArrowUpFromLine, Hammer, FileText, ChevronLeft
 } from "lucide-react";
+import useAppStore from "../store/useAppStore.js";
 import VerticalNavBar from "../components/VerticalNavBar.jsx";
 import HorizontalNavBar from "../components/HorizontalNavBar.jsx";
-import useAppStore from "../store/useAppStore.js";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:4000";
 
@@ -22,65 +26,89 @@ async function apiFetch(path, opts = {}) {
   return data;
 }
 
-const LIEU_TYPES = {
-  SALLE_INFO: "salle_informatique",
-  SALLE_COURS: "salle_cours",
-  BUREAU: "bureau",
-};
+// ══════════════════════════════════════════════════════════
+// CONSTANTES UI
+// ══════════════════════════════════════════════════════════
+const EQUIPEMENT_TYPES = [
+  "ecran", "souris", "clavier", "uc", "onduleur", "nappe",
+  "cable_hdmi", "cable_usb", "projecteur", "rallonge",
+  "regulateur", "support_projection", "autre",
+];
 
-const EQUIPEMENT_TYPES = {
-  POSTE_COMPOSANT: "poste_composant",
-  PROJECTEUR: "projecteur",
-  RALLONGE: "rallonge",
-  SUPPORT_PROJECTION: "support_projection",
-  REGULATEUR: "regulateur_tension",
-  AUTRE: "autre",
-};
+const TYPES_PROBLEMES = [
+  "ecran_casse", "ecran_flou", "ecran_noir", "pixels_morts",
+  "clavier_touche_hs", "clavier_liquide", "souris_clic_hs",
+  "souris_capteur_hs", "usb_hs", "alim_hs", "ventilateur_bruyant",
+  "surchauffe", "disque_bruyant", "pas_image", "fils_coupes",
+  "connecteur_loose", "autre",
+];
 
-const equipIconMap = {
-  [EQUIPEMENT_TYPES.POSTE_COMPOSANT]: Monitor,
-  [EQUIPEMENT_TYPES.PROJECTEUR]: Video,
-  [EQUIPEMENT_TYPES.RALLONGE]: Plug,
-  [EQUIPEMENT_TYPES.SUPPORT_PROJECTION]: FolderTree,
-  [EQUIPEMENT_TYPES.REGULATEUR]: Battery,
-  [EQUIPEMENT_TYPES.AUTRE]: Package,
-};
-
-const etatStyle = {
+const ETAT_STYLE = {
   fonctionnel: { bg: "#E8F5E9", color: "#2E7D32", label: "Fonctionnel", icon: CheckCircle2 },
-  panne: { bg: "#FFEBEE", color: "#C62828", label: "En panne", icon: AlertCircle },
-  maintenance: { bg: "#FFF3E0", color: "#EF6C00", label: "Maintenance", icon: Wrench },
+  panne:       { bg: "#FFEBEE", color: "#C62828", label: "En panne",     icon: AlertCircle },
+  maintenance: { bg: "#FFF3E0", color: "#EF6C00", label: "Maintenance",  icon: Wrench },
+  obsolete:    { bg: "#F3E5F5", color: "#7B1FA2", label: "Obsolète",     icon: Archive },
+  reforme:     { bg: "#ECEFF1", color: "#546E7A", label: "Réformé",      icon: Trash2 },
+  donne:       { bg: "#E3F2FD", color: "#1565C0", label: "Donné",        icon: ArrowUpFromLine },
 };
 
+const GRAVITE_STYLE = {
+  legere:   { bg: "#FFF9C4", color: "#F9A825", label: "Légère" },
+  moyenne:  { bg: "#FFE0B2", color: "#E65100", label: "Moyenne" },
+  grave:    { bg: "#FFEBEE", color: "#B71C1C", label: "Grave" },
+  critique: { bg: "#EDE7F6", color: "#4A148C", label: "Critique" },
+};
+
+const LOCALISATION_LABELS = {
+  stock:      "📦 En stock",
+  lieu:       "📍 Dans un lieu",
+  poste:      "🖥️ Dans un poste",
+  pret:       "📤 En prêt",
+  reparation: "🔧 En réparation",
+  reforme:    "🗑️ Réformé",
+  donne:      "🎁 Donné",
+};
+
+const LIEU_TYPE_LABELS = {
+  salle_informatique: { emoji: "🖥️", label: "Salles informatiques" },
+  salle_cours:        { emoji: "📚", label: "Salles de cours" },
+  bureau:             { emoji: "💼", label: "Bureaux" },
+  magasin:            { emoji: "📦", label: "Magasins" },
+  reparateur:         { emoji: "🔧", label: "Réparateurs" },
+};
+
+// ══════════════════════════════════════════════════════════
+// ONGLETS PRINCIPAUX
+// ══════════════════════════════════════════════════════════
+const MAIN_TABS = [
+  { id: "dashboard",   label: "Tableau de bord",  icon: BarChart3 },
+  { id: "catalogue",   label: "Catalogue",         icon: BookMarked },
+  { id: "stock",       label: "Stock",             icon: Box },
+  { id: "lieux",       label: "Lieux & Postes",    icon: Building2 },
+  { id: "mouvements",  label: "Mouvements",        icon: ArrowRightLeft },
+  { id: "problemes",   label: "Problèmes",         icon: AlertTriangle },
+  { id: "prets",       label: "Prêts",             icon: ArrowUpFromLine },
+  { id: "reparations", label: "Réparations",       icon: Hammer },
+];
+
+// ══════════════════════════════════════════════════════════
+// COMPOSANT PRINCIPAL
+// ══════════════════════════════════════════════════════════
 export default function MaterielPage({ currentSection, onNavigate }) {
   const { academicYear } = useAppStore();
 
-  const [lieux, setLieux] = useState([]);
-  const [selectedLieuId, setSelectedLieuId] = useState("");
+  const [activeTab, setActiveTab]     = useState("dashboard");
+  const [lieux, setLieux]             = useState([]);
+  const [catalogue, setCatalogue]     = useState([]);
   const [equipements, setEquipements] = useState([]);
-  const [postesTravail, setPostesTravail] = useState([]);
-  const [projecteurs, setProjecteurs] = useState([]);
-  const [utilisationsProjecteur, setUtilisationsProjecteur] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("equipements");
-  const [toast, setToast] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState(null);
-  const [editItem, setEditItem] = useState(null);
-  const [formData, setFormData] = useState({});
-  const [saving, setSaving] = useState(false);
-  const [expandedLieux, setExpandedLieux] = useState(new Set([LIEU_TYPES.SALLE_INFO, LIEU_TYPES.SALLE_COURS, LIEU_TYPES.BUREAU]));
-  const [showEntreeSortieModal, setShowEntreeSortieModal] = useState(false);
-  const [entreeSortieForm, setEntreeSortieForm] = useState({
-    type: "entree",
-    responsable: "",
-    responsableType: "enseignant",
-    date: new Date().toISOString().slice(0, 16),
-    observationsAvant: "",
-    observationsApres: "",
-  });
-  const [historiqueEntrees, setHistoriqueEntrees] = useState([]);
-  const [showHistorique, setShowHistorique] = useState(false);
+  const [postes, setPostes]           = useState([]);
+  const [prets, setPrets]             = useState([]);
+  const [reparations, setReparations] = useState([]);
+  const [stats, setStats]             = useState(null);
+  const [alertes, setAlertes]         = useState([]);
+  const [loading, setLoading]         = useState(false);
+  const [toast, setToast]             = useState(null);
+  const [modal, setModal]             = useState(null);
 
   const showToast = useCallback((type, msg) => {
     setToast({ type, msg });
@@ -90,18 +118,24 @@ export default function MaterielPage({ currentSection, onNavigate }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [lieuxData, equipData, postesData, projData, utilData] = await Promise.all([
+      const [lieuxD, catD, equipD, postesD, pretsD, repsD, statsD, alertesD] = await Promise.all([
         apiFetch("/materiel/lieux"),
+        apiFetch("/materiel/catalogue"),
         apiFetch("/materiel/equipements"),
-        apiFetch("/materiel/postes-travail"),
-        apiFetch("/materiel/projecteurs"),
-        apiFetch("/materiel/utilisations-projecteur"),
+        apiFetch("/materiel/postes"),
+        apiFetch("/materiel/prets"),
+        apiFetch("/materiel/reparations"),
+        apiFetch("/materiel/stats/globales"),
+        apiFetch("/materiel/stats/alertes-stock"),
       ]);
-      setLieux(Array.isArray(lieuxData) ? lieuxData : []);
-      setEquipements(Array.isArray(equipData) ? equipData : []);
-      setPostesTravail(Array.isArray(postesData) ? postesData : []);
-      setProjecteurs(Array.isArray(projData) ? projData : []);
-      setUtilisationsProjecteur(Array.isArray(utilData) ? utilData : []);
+      setLieux(Array.isArray(lieuxD) ? lieuxD : []);
+      setCatalogue(Array.isArray(catD) ? catD : []);
+      setEquipements(Array.isArray(equipD) ? equipD : []);
+      setPostes(Array.isArray(postesD) ? postesD : []);
+      setPrets(Array.isArray(pretsD) ? pretsD : []);
+      setReparations(Array.isArray(repsD) ? repsD : []);
+      setStats(statsD);
+      setAlertes(Array.isArray(alertesD) ? alertesD : []);
     } catch (err) {
       showToast("err", err.message);
     } finally {
@@ -109,1208 +143,1517 @@ export default function MaterielPage({ currentSection, onNavigate }) {
     }
   }, [showToast]);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  useEffect(() => { loadData(); }, [loadData]);
 
-  const selectedLieu = lieux.find((l) => l.id === selectedLieuId) || null;
-  const equipementsByLieu = equipements.filter((e) => e.lieu_id === selectedLieuId);
-  const postesByLieu = postesTravail.filter((p) => p.salle_informatique_id === selectedLieuId);
-  const projecteursByLieu = projecteurs.filter((p) => p.lieu_id === selectedLieuId);
+  const openModal = (type, editItem = null, extra = {}) =>
+    setModal({ type, editItem, data: editItem ? { ...editItem } : { ...extra } });
+  const closeModal = () => setModal(null);
 
-  const lieuxByType = useMemo(() => {
-    const groups = {
-      [LIEU_TYPES.SALLE_INFO]: [],
-      [LIEU_TYPES.SALLE_COURS]: [],
-      [LIEU_TYPES.BUREAU]: [],
-    };
-    lieux.forEach((l) => {
-      if (groups[l.type]) groups[l.type].push(l);
-    });
-    return groups;
-  }, [lieux]);
-
-  const toggleExpandType = (type) => {
-    setExpandedLieux((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type);
-      else next.add(type);
-      return next;
-    });
-  };
-
-  const handleDelete = async (type, id) => {
+  const handleDelete = async (collection, id) => {
     if (!window.confirm("Confirmer la suppression ?")) return;
-    setSaving(true);
     try {
-      await apiFetch(`/materiel/${type}/${id}`, { method: "DELETE" });
+      await apiFetch(`/materiel/${collection}/${id}`, { method: "DELETE" });
       await loadData();
       showToast("ok", "Supprimé");
-    } catch (err) {
-      showToast("err", err.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { showToast("err", err.message); }
   };
 
-  const handleEntreeSortie = async () => {
-    if (!selectedLieu) return;
-    try {
-      await apiFetch("/materiel/entree-sortie", {
-        method: "POST",
-        body: JSON.stringify({
-          lieu_id: selectedLieu.id,
-          type: entreeSortieForm.type,
-          responsable: entreeSortieForm.responsable,
-          responsableType: entreeSortieForm.responsableType,
-          date: entreeSortieForm.date,
-          observationsAvant: entreeSortieForm.observationsAvant,
-          observationsApres: entreeSortieForm.observationsApres,
-        }),
-      });
-      showToast("ok", `${entreeSortieForm.type === "entree" ? "Entrée" : "Sortie"} enregistrée`);
-      setShowEntreeSortieModal(false);
-      setEntreeSortieForm({
-        type: "entree",
-        responsable: "",
-        responsableType: "enseignant",
-        date: new Date().toISOString().slice(0, 16),
-        observationsAvant: "",
-        observationsApres: "",
-      });
-    } catch (err) {
-      showToast("err", err.message);
-    }
-  };
-
-  const loadHistorique = async () => {
-    if (!selectedLieu) return;
-    try {
-      const data = await apiFetch(`/materiel/entrees-sorties/${selectedLieu.id}`);
-      setHistoriqueEntrees(data);
-      setShowHistorique(true);
-    } catch (err) {
-      showToast("err", err.message);
-    }
-  };
-
-  const imprimerFiche = () => {
-    if (!historiqueEntrees.length) return;
-    const html = `
-      <html>
-      <head><title>Fiche de suivi - ${selectedLieu.nom}</title></head>
-      <body>
-        <h1>${selectedLieu.nom}</h1>
-        <table border="1" cellpadding="5">
-          <thead><tr><th>Date</th><th>Type</th><th>Responsable</th><th>Observations avant</th><th>Observations après</th></tr></thead>
-          <tbody>
-            ${historiqueEntrees.map(e => `
-              <tr>
-                <td>${new Date(e.date).toLocaleString()}</td>
-                <td>${e.type === "entree" ? "Entrée" : "Sortie"}</td>
-                <td>${e.responsable} (${e.responsableType})</td>
-                <td>${e.observationsAvant || "—"}</td>
-                <td>${e.observationsApres || "—"}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </body>
-      </html>
-    `;
-    const w = window.open();
-    w.document.write(html);
-    w.print();
-  };
+  const nbProblemes   = equipements.reduce((a, e) => a + (e.nb_problemes_actifs || 0), 0);
+  const nbPretsActifs = prets.filter((p) => !p.date_retour_effectif).length;
+  const nbRepsActives = reparations.filter((r) => !r.retour_effectif).length;
 
   return (
-    <div style={sx.root}>
-      <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
-      <div style={sx.contentArea}>
-        <HorizontalNavBar title="Gestion du matériel" subtitle={`Année ${academicYear}`} />
-        <div style={sx.body}>
-          <aside style={sx.sidebar}>
-            <div style={sx.sideHeader}>
-              <Layers size={13} style={{ color: "var(--ip-teal)" }} />
-              <span>Lieux</span>
-              <button style={sx.addSmallBtn} onClick={() => { setModalType("lieu"); setEditItem(null); setFormData({}); setShowModal(true); }}>
-                <Plus size={12} />
+    <div style={styles.layout}>
+      <aside style={styles.left}>
+        <VerticalNavBar currentSection={currentSection} onNavigate={onNavigate} />
+      </aside>
+      <main style={styles.right}>
+        <HorizontalNavBar />
+        <div style={styles.pageBody}>
+          <div style={styles.container}>
+            {/* HEADER */}
+            <div style={styles.header}>
+              <div>
+                <h1 style={styles.title}>Gestion du Matériel</h1>
+                <p style={styles.subtitle}>Année académique {academicYear}</p>
+              </div>
+              <button style={styles.refreshBtn} onClick={loadData} title="Actualiser">
+                <RefreshCw size={15} />
               </button>
             </div>
-            {loading && <div style={sx.hint}>Chargement...</div>}
-            {Object.entries(lieuxByType).map(([type, items]) => {
-              const label = {
-                [LIEU_TYPES.SALLE_INFO]: "🏫 Salles informatiques",
-                [LIEU_TYPES.SALLE_COURS]: "📖 Salles de cours",
-                [LIEU_TYPES.BUREAU]: "💼 Bureaux",
-              }[type] || type;
-              const expanded = expandedLieux.has(type);
-              return (
-                <div key={type} style={sx.typeBlock}>
-                  <button style={sx.typeToggle} onClick={() => toggleExpandType(type)}>
-                    <div style={sx.typeLeft}>
-                      {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                      <span style={sx.typeLabel}>{label}</span>
-                    </div>
-                    <span style={sx.typeCount}>{items.length}</span>
+
+            {/* ONGLETS */}
+            <div style={styles.tabsBar}>
+              {MAIN_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const badge =
+                  tab.id === "problemes"   && nbProblemes   > 0 ? nbProblemes   :
+                  tab.id === "prets"       && nbPretsActifs > 0 ? nbPretsActifs :
+                  tab.id === "reparations" && nbRepsActives > 0 ? nbRepsActives :
+                  tab.id === "stock"       && alertes.length > 0 ? alertes.length : null;
+                return (
+                  <button key={tab.id}
+                    style={{ ...styles.tabBtn, ...(activeTab === tab.id ? styles.tabBtnActive : {}) }}
+                    onClick={() => setActiveTab(tab.id)}>
+                    <Icon size={15} /> {tab.label}
+                    {badge && <span style={styles.badge}>{badge}</span>}
                   </button>
-                  {expanded &&
-                    items.map((lieu) => (
-                      <button
-                        key={lieu.id}
-                        onClick={() => setSelectedLieuId(lieu.id)}
-                        style={{ ...sx.lieuBtn, ...(selectedLieuId === lieu.id ? sx.lieuBtnSel : {}) }}
-                      >
-                        <div style={sx.lieuName}>{lieu.nom}</div>
-                        <div style={sx.lieuMeta}>
-                          {lieu.capacite && `${lieu.capacite} places`}
-                          {lieu.occupant && ` · ${lieu.occupant}`}
-                        </div>
-                      </button>
-                    ))}
+                );
+              })}
+            </div>
+
+            {loading && <div style={styles.loadingBar}><div style={styles.loadingFill} /></div>}
+
+            {/* CONTENU */}
+            <div style={styles.content}>
+              {activeTab === "dashboard" && (
+                <DashboardTab stats={stats} alertes={alertes} prets={prets}
+                  reparations={reparations} onNavigate={setActiveTab} />
+              )}
+              {activeTab === "catalogue" && (
+                <CatalogueTab catalogue={catalogue} equipements={equipements}
+                  onAdd={() => openModal("catalogue")} onEdit={(i) => openModal("catalogue", i)} />
+              )}
+              {activeTab === "stock" && (
+                <StockTab equipements={equipements} catalogue={catalogue} alertes={alertes}
+                  onAdd={() => openModal("equipement")} showToast={showToast} onRefresh={loadData} />
+              )}
+              {activeTab === "lieux" && (
+                <LieuxTab lieux={lieux} postes={postes} equipements={equipements}
+                  onAddLieu={() => openModal("lieu")} onEditLieu={(l) => openModal("lieu", l)}
+                  onDeleteLieu={(id) => handleDelete("lieu", id)} showToast={showToast} onRefresh={loadData} />
+              )}
+              {activeTab === "mouvements" && (
+                <MouvementsTab equipements={equipements} lieux={lieux}
+                  showToast={showToast} onRefresh={loadData} />
+              )}
+              {activeTab === "problemes" && (
+                <ProblemesTab equipements={equipements} showToast={showToast} onRefresh={loadData} />
+              )}
+              {activeTab === "prets" && (
+                <PretsTab prets={prets} equipements={equipements} showToast={showToast} onRefresh={loadData} />
+              )}
+              {activeTab === "reparations" && (
+                <ReparationsTab reparations={reparations} equipements={equipements}
+                  showToast={showToast} onRefresh={loadData} />
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* TOAST */}
+      {toast && (
+        <div style={{ ...styles.toast, ...(toast.type === "ok" ? styles.toastOk : styles.toastErr) }}>
+          {toast.type === "ok" ? <Check size={14} /> : <AlertCircle size={14} />}
+          {toast.msg}
+        </div>
+      )}
+
+      {/* MODAL */}
+      {modal && (
+        <ModalManager {...modal} catalogue={catalogue} lieux={lieux} equipements={equipements}
+          onClose={closeModal}
+          onSaved={async () => { await loadData(); closeModal(); showToast("ok", "Enregistré"); }}
+          showToast={showToast} />
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════════
+function DashboardTab({ stats, alertes, prets, reparations, onNavigate }) {
+  if (!stats) return <Placeholder>Chargement…</Placeholder>;
+
+  const totalPannes = (stats.par_etat?.panne || 0) + (stats.par_etat?.maintenance || 0);
+  const tauxDispo   = stats.total_equipements > 0
+    ? Math.round(((stats.par_etat?.fonctionnel || 0) / stats.total_equipements) * 100) : 0;
+  const pretsActifs = prets.filter((p) => !p.date_retour_effectif).length;
+  const repsActives = reparations.filter((r) => !r.retour_effectif).length;
+
+  return (
+    <div style={styles.dashboard}>
+      <div style={styles.kpiGrid}>
+        <KpiCard title="Total équipements"    value={stats.total_equipements} icon={Package}         color="var(--ip-teal)" />
+        <KpiCard title="Taux disponibilité"   value={`${tauxDispo}%`}         icon={CheckCircle2}    color="#2E7D32" />
+        <KpiCard title="Pannes / Maintenance" value={totalPannes}              icon={AlertTriangle}   color="#C62828" />
+        <KpiCard title="Problèmes actifs"     value={stats.problemes_actifs || 0} icon={ShieldAlert} color="#E65100" />
+        <KpiCard title="Prêts en cours"       value={pretsActifs}              icon={ArrowUpFromLine} color="#1565C0" />
+        <KpiCard title="Réparations en cours" value={repsActives}              icon={Hammer}          color="#7B1FA2" />
+      </div>
+
+      {alertes.length > 0 && (
+        <div style={styles.section}>
+          <div style={styles.sectionHeader}>
+            <h3 style={styles.sectionTitle}><AlertTriangle size={16} /> Alertes stock ({alertes.length})</h3>
+            <button style={styles.linkBtn} onClick={() => onNavigate("stock")}>Voir le stock →</button>
+          </div>
+          <div style={styles.alertesList}>
+            {alertes.map((a) => (
+              <div key={a.catalogue_id}
+                style={{ ...styles.alerteCard, borderLeftColor: a.gravite === "critique" ? "#C62828" : "#FF9800" }}>
+                <div style={styles.alerteTitle}>{a.designation} <span style={styles.alerteRef}>({a.reference})</span></div>
+                <div style={styles.alerteMeta}>
+                  Disponible : <strong>{a.stock_disponible}</strong> / Minimum : {a.stock_minimum}
+                  {a.manque > 0 && <span style={{ color: "#C62828", fontWeight: 700 }}> — Manque : {a.manque}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={styles.statsGrid}>
+        <div style={styles.statCard}>
+          <h4 style={styles.statCardTitle}>Répartition par état</h4>
+          <div style={styles.statBars}>
+            {Object.entries(stats.par_etat || {}).map(([etat, count]) => {
+              const info = ETAT_STYLE[etat];
+              return (
+                <div key={etat} style={styles.statBar}>
+                  <span style={styles.statBarLabel}>{info?.label || etat}</span>
+                  <div style={styles.barTrack}>
+                    <div style={{ ...styles.barFill, width: `${stats.total_equipements ? (count / stats.total_equipements * 100) : 0}%`, background: info?.color || "#999" }} />
+                  </div>
+                  <span style={styles.statBarVal}>{count}</span>
                 </div>
               );
             })}
-          </aside>
+          </div>
+        </div>
 
-          <main style={sx.main}>
-            {toast && (
-              <div style={{ ...sx.toast, ...(toast.type === "ok" ? sx.toastOk : sx.toastErr) }}>
-                {toast.type === "ok" ? <Check size={13} /> : <AlertCircle size={13} />}
-                {toast.msg}
-              </div>
-            )}
-            {!selectedLieu ? (
-              <div style={sx.emptyState}>
-                <div style={sx.emptyIcon}>
-                  <Building2 size={48} strokeWidth={1.2} color="var(--ip-teal)" />
+        <div style={styles.statCard}>
+          <h4 style={styles.statCardTitle}>Répartition par localisation</h4>
+          <div style={styles.statBars}>
+            {Object.entries(stats.par_localisation || {}).map(([loc, count]) => (
+              <div key={loc} style={styles.statBar}>
+                <span style={styles.statBarLabel}>{LOCALISATION_LABELS[loc]?.replace(/^.{2}/, "").trim() || loc}</span>
+                <div style={styles.barTrack}>
+                  <div style={{ ...styles.barFill, width: `${stats.total_equipements ? (count / stats.total_equipements * 100) : 0}%`, background: "var(--ip-teal)" }} />
                 </div>
-                <div style={sx.emptyTitle}>Sélectionnez un lieu</div>
-                <div style={sx.emptySub}>Choisissez une salle ou un bureau dans la colonne de gauche.</div>
+                <span style={styles.statBarVal}>{count}</span>
               </div>
-            ) : (
-              <>
-                <div style={sx.classCard}>
-                  <div style={sx.classCardLeft}>
-                    <div style={sx.classCardTitle}>{selectedLieu.nom}</div>
-                    <div style={sx.classCardMeta}>
-                      {selectedLieu.type === LIEU_TYPES.SALLE_INFO && "🖥️ Salle informatique"}
-                      {selectedLieu.type === LIEU_TYPES.SALLE_COURS && "📚 Salle de cours"}
-                      {selectedLieu.type === LIEU_TYPES.BUREAU && "📁 Bureau"}
-                      {selectedLieu.capacite && ` · ${selectedLieu.capacite} places`}
-                      {selectedLieu.occupant && ` · Occupant: ${selectedLieu.occupant}`}
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// CATALOGUE
+// ══════════════════════════════════════════════════════════
+function CatalogueTab({ catalogue, equipements, onAdd, onEdit }) {
+  const [search, setSearch]         = useState("");
+  const [filterType, setFilterType] = useState("tous");
+
+  const filtered = catalogue.filter((c) => {
+    const m = !search ||
+      c.reference?.toLowerCase().includes(search.toLowerCase()) ||
+      c.designation?.toLowerCase().includes(search.toLowerCase()) ||
+      c.type?.toLowerCase().includes(search.toLowerCase());
+    return m && (filterType === "tous" || c.type === filterType);
+  });
+
+  return (
+    <div>
+      <div style={styles.tabHeader}>
+        <div style={styles.filters}>
+          <SearchBox value={search} onChange={setSearch} placeholder="Référence, désignation, type…" />
+          <select style={styles.select} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            <option value="tous">Tous les types</option>
+            {EQUIPEMENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <span style={styles.countPill}>{filtered.length} article(s)</span>
+        </div>
+        <Btn primary onClick={onAdd}><Plus size={14} /> Nouvelle référence</Btn>
+      </div>
+
+      {filtered.length === 0
+        ? <EmptyState icon={<BookMarked size={40} />} title="Catalogue vide" sub="Ajoutez des modèles d'équipements." />
+        : (
+          <div style={styles.catGrid}>
+            {filtered.map((item) => {
+              const stockDispo = item.stock?.disponible || 0;
+              const alerte     = stockDispo < (item.quantite_minimale || 0);
+              return (
+                <div key={item.id} style={{ ...styles.catCard, ...(alerte ? styles.catCardAlerte : {}) }}>
+                  <div style={styles.catCardTop}>
+                    <span style={styles.catType}>{item.type}</span>
+                    <button style={styles.iconBtn} onClick={() => onEdit(item)}><Edit3 size={13} /></button>
+                  </div>
+                  {item.fabricant && <div style={styles.catBrand}>{item.fabricant}</div>}
+                  <div style={styles.catName}>{item.designation}</div>
+                  <div style={styles.catRef}>Réf : {item.reference}</div>
+                  {item.modele    && <div style={styles.catMeta}>Modèle : {item.modele}</div>}
+                  {item.prix_achat && <div style={styles.catPrix}>{Number(item.prix_achat).toLocaleString()} FCFA</div>}
+                  <div style={styles.catStockRow}>
+                    <StockCell label="Stock"  val={stockDispo}            alert={alerte} />
+                    <StockCell label="Utilisé" val={item.stock?.utilise || 0} />
+                    <StockCell label="Total"   val={item.stock?.total || 0} />
+                  </div>
+                  {alerte && <div style={styles.catAlertBanner}>⚠️ Stock bas — min : {item.quantite_minimale}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+    </div>
+  );
+}
+
+function StockCell({ label, val, alert }) {
+  return (
+    <div style={styles.catStockCell}>
+      <span style={styles.catStockLabel}>{label}</span>
+      <span style={{ ...styles.catStockVal, ...(alert ? { color: "#C62828" } : {}) }}>{val}</span>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// STOCK
+// ══════════════════════════════════════════════════════════
+function StockTab({ equipements, alertes, onAdd, showToast, onRefresh }) {
+  const [filterLoc,  setFilterLoc]  = useState("all");
+  const [filterEtat, setFilterEtat] = useState("all");
+  const [search, setSearch]         = useState("");
+  const [detail, setDetail]         = useState(null);
+
+  const filtered = equipements.filter((eq) => {
+    if (filterLoc  !== "all" && eq.localisation?.type !== filterLoc)  return false;
+    if (filterEtat !== "all" && eq.etat              !== filterEtat)  return false;
+    if (search && !eq.designation?.toLowerCase().includes(search.toLowerCase()) &&
+        !eq.reference_catalogue?.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  return (
+    <div>
+      {alertes.length > 0 && (
+        <div style={styles.alerteBandeau}>
+          <AlertTriangle size={13} />
+          {alertes.length} référence(s) en dessous du stock minimum
+        </div>
+      )}
+      <div style={styles.tabHeader}>
+        <div style={styles.filters}>
+          <SearchBox value={search} onChange={setSearch} placeholder="Désignation, référence…" />
+          <select style={styles.select} value={filterLoc} onChange={(e) => setFilterLoc(e.target.value)}>
+            <option value="all">Toutes localisations</option>
+            {Object.entries(LOCALISATION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+          <select style={styles.select} value={filterEtat} onChange={(e) => setFilterEtat(e.target.value)}>
+            <option value="all">Tous états</option>
+            {Object.entries(ETAT_STYLE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <span style={styles.countPill}>{filtered.length} ligne(s)</span>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Btn secondary onClick={onRefresh}><RefreshCw size={13} /></Btn>
+          <Btn primary onClick={onAdd}><Plus size={14} /> Entrée stock</Btn>
+        </div>
+      </div>
+
+      <div style={styles.tableWrapper}>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              {["Référence","Désignation","Type","Qté","État","Localisation","Problèmes",""].map((h) => (
+                <th key={h} style={styles.th}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0
+              ? <tr><td colSpan={8} style={{ textAlign: "center", padding: 32, color: "var(--ip-gray)" }}>Aucun résultat</td></tr>
+              : filtered.map((eq) => {
+                const etatInfo = ETAT_STYLE[eq.etat] || ETAT_STYLE.fonctionnel;
+                const EtatIcon = etatInfo.icon;
+                return (
+                  <tr key={eq.id} style={styles.tr}>
+                    <td style={styles.td}><span style={styles.refTag}>{eq.reference_catalogue}</span></td>
+                    <td style={styles.td}>{eq.designation}</td>
+                    <td style={styles.td}><span style={styles.typePill}>{eq.type}</span></td>
+                    <td style={{ ...styles.td, fontWeight: 700, textAlign: "center" }}>{eq.quantite || 1}</td>
+                    <td style={styles.td}>
+                      <span style={{ ...styles.etatBadge, background: etatInfo.bg, color: etatInfo.color }}>
+                        <EtatIcon size={11} /> {etatInfo.label}
+                      </span>
+                    </td>
+                    <td style={styles.td}>
+                      {LOCALISATION_LABELS[eq.localisation?.type] || eq.localisation?.type || "—"}
+                      {eq.localisation?.nom_lieu && <span style={styles.locDetail}> · {eq.localisation.nom_lieu}</span>}
+                    </td>
+                    <td style={styles.td}>
+                      {eq.nb_problemes_actifs > 0
+                        ? <span style={styles.problemeBadge}><AlertTriangle size={10} /> {eq.nb_problemes_actifs}</span>
+                        : <span style={{ color: "#2E7D32", fontSize: "0.75rem" }}>✓</span>}
+                    </td>
+                    <td style={styles.td}>
+                      <button style={styles.iconBtn} onClick={() => setDetail(eq)} title="Détails"><Eye size={14} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
+      </div>
+
+      {detail && (
+        <EquipementDetail equip={detail} onClose={() => setDetail(null)} showToast={showToast} onRefresh={onRefresh} />
+      )}
+    </div>
+  );
+}
+
+// Détail équipement avec historique des problèmes
+function EquipementDetail({ equip, onClose, showToast, onRefresh }) {
+  const [problemes, setProblemes] = useState([]);
+  const [loadingP, setLoadingP]   = useState(true);
+
+  useEffect(() => {
+    apiFetch(`/materiel/problemes/${equip.id}`)
+      .then((d) => setProblemes(Array.isArray(d) ? d : []))
+      .catch(() => setProblemes([]))
+      .finally(() => setLoadingP(false));
+  }, [equip.id]);
+
+  const handleResoudre = async (pbId) => {
+    const resolution = window.prompt("Notes de résolution ?", "Réparé");
+    if (resolution === null) return;
+    try {
+      await apiFetch(`/materiel/probleme/${pbId}/resoudre`, {
+        method: "PUT",
+        body: JSON.stringify({ resolution, resolu_par: "Technicien", nouvel_etat: "fonctionnel" }),
+      });
+      showToast("ok", "Problème résolu");
+      const updated = await apiFetch(`/materiel/problemes/${equip.id}`);
+      setProblemes(Array.isArray(updated) ? updated : []);
+      onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const etatInfo = ETAT_STYLE[equip.etat] || ETAT_STYLE.fonctionnel;
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title={`Détail — ${equip.designation}`} onClose={onClose} wide>
+        <div style={styles.detailGrid}>
+          <DetailRow label="Référence"   val={equip.reference_catalogue} />
+          <DetailRow label="Type"        val={equip.type} />
+          <DetailRow label="Quantité"    val={equip.quantite || 1} />
+          <DetailRow label="Date achat"  val={equip.date_achat ? new Date(equip.date_achat).toLocaleDateString() : "—"} />
+          <DetailRow label="Fournisseur" val={equip.fournisseur || "—"} />
+          <DetailRow label="Prix achat"  val={equip.prix_achat ? `${Number(equip.prix_achat).toLocaleString()} FCFA` : "—"} />
+          <DetailRow label="État" val={
+            <span style={{ ...styles.etatBadge, background: etatInfo.bg, color: etatInfo.color }}>{etatInfo.label}</span>
+          } />
+          <DetailRow label="Localisation" val={LOCALISATION_LABELS[equip.localisation?.type] || "—"} />
+          {equip.localisation?.nom_lieu && <DetailRow label="Lieu" val={equip.localisation.nom_lieu} />}
+          {equip.observations && <DetailRow label="Observations" val={equip.observations} />}
+        </div>
+
+        <h4 style={styles.detailSection}>Historique des problèmes</h4>
+        {loadingP ? <p style={styles.hint}>Chargement…</p> : problemes.length === 0
+          ? <p style={{ ...styles.hint, color: "#2E7D32" }}>✓ Aucun problème enregistré</p>
+          : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {problemes.map((pb) => {
+                const grav = GRAVITE_STYLE[pb.gravite] || GRAVITE_STYLE.moyenne;
+                return (
+                  <div key={pb.id} style={{ ...styles.pbItem, ...(pb.resolu ? styles.pbResolu : {}) }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <span style={{ fontWeight: 700, fontSize: "0.84rem" }}>{pb.type_probleme?.replace(/_/g, " ")}</span>
+                      <span style={{ ...styles.etatBadge, background: grav.bg, color: grav.color }}>{grav.label}</span>
+                      {pb.resolu
+                        ? <span style={{ ...styles.etatBadge, background: "#E8F5E9", color: "#2E7D32" }}>✓ Résolu</span>
+                        : <span style={{ ...styles.etatBadge, background: "#FFEBEE", color: "#C62828" }}>Actif</span>}
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {selectedLieu.type === LIEU_TYPES.SALLE_INFO && (
-                      <>
-                        <button style={sx.btnSecondary} onClick={() => setShowEntreeSortieModal(true)}>
-                          <Clock size={13} /> Entrée / Sortie
-                        </button>
-                        <button style={sx.btnSecondary} onClick={loadHistorique}>
-                          <ClipboardList size={13} /> Historique
-                        </button>
-                      </>
+                    {pb.description && <div style={styles.pbDesc}>{pb.description}</div>}
+                    <div style={styles.pbMeta}>
+                      Signalé par {pb.signale_par} le {new Date(pb.date_signalement).toLocaleDateString()}
+                      {pb.resolu && pb.date_resolution && ` · Résolu le ${new Date(pb.date_resolution).toLocaleDateString()}`}
+                    </div>
+                    {pb.resolution && <div style={{ fontSize: "0.75rem", color: "#2E7D32" }}>→ {pb.resolution}</div>}
+                    {!pb.resolu && (
+                      <Btn secondary onClick={() => handleResoudre(pb.id)} style={{ marginTop: 4 }}>
+                        <Check size={13} /> Marquer résolu
+                      </Btn>
                     )}
-                    <button
-                      style={sx.btnSecondary}
-                      onClick={() => {
-                        setModalType("lieu");
-                        setEditItem(selectedLieu);
-                        setFormData(selectedLieu);
-                        setShowModal(true);
-                      }}
-                    >
-                      <Edit3 size={13} /> Modifier
-                    </button>
                   </div>
-                </div>
+                );
+              })}
+            </div>
+          )}
 
-                <div style={sx.tabsRow}>
-                  <TabBtn active={activeTab === "equipements"} onClick={() => setActiveTab("equipements")}>
-                    <Package size={13} /> Équipements ({equipementsByLieu.length})
-                  </TabBtn>
-                  {selectedLieu.type === LIEU_TYPES.SALLE_INFO && (
-                    <TabBtn active={activeTab === "postes"} onClick={() => setActiveTab("postes")}>
-                      <Monitor size={13} /> Postes ({postesByLieu.length})
-                    </TabBtn>
+        <div style={styles.modalFooter}><Btn ghost onClick={onClose}>Fermer</Btn></div>
+      </ModalBox>
+    </Overlay>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// LIEUX & POSTES
+// ══════════════════════════════════════════════════════════
+function LieuxTab({ lieux, postes, equipements, onAddLieu, onEditLieu, onDeleteLieu, showToast, onRefresh }) {
+  const [selectedLieu, setSelectedLieu] = useState(null);
+  const [subTab, setSubTab]             = useState("equipements");
+  const [showES, setShowES]             = useState(false);
+  const [showHist, setShowHist]         = useState(false);
+  const [historique, setHistorique]     = useState([]);
+  const [esFrm, setEsFrm]              = useState({
+    type: "entree", responsable: "", responsable_type: "enseignant",
+    date: new Date().toISOString().slice(0, 16),
+    observations_avant: "", observations_apres: "",
+  });
+
+  const lieuxByType = useMemo(() => {
+    const g = {};
+    lieux.forEach((l) => { if (!g[l.type]) g[l.type] = []; g[l.type].push(l); });
+    return g;
+  }, [lieux]);
+
+  const equipsLieu = selectedLieu ? equipements.filter((e) => e.localisation?.lieu_id === selectedLieu.id) : [];
+  const postesLieu = selectedLieu ? postes.filter((p) => p.salle_informatique_id === selectedLieu.id) : [];
+
+  const handleES = async () => {
+    try {
+      await apiFetch("/materiel/entree-sortie", {
+        method: "POST", body: JSON.stringify({ lieu_id: selectedLieu.id, ...esFrm }),
+      });
+      showToast("ok", `${esFrm.type === "entree" ? "Entrée" : "Sortie"} enregistrée`);
+      setShowES(false);
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const loadHist = async () => {
+    try {
+      const data = await apiFetch(`/materiel/entrees-sorties/${selectedLieu.id}`);
+      setHistorique(Array.isArray(data) ? data : []);
+      setShowHist(true);
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  return (
+    <div style={styles.lieuxLayout}>
+      {/* Sidebar */}
+      <aside style={styles.lieuxSidebar}>
+        <div style={styles.sidebarHeader}>
+          <span style={styles.sidebarTitle}>Lieux</span>
+          <button style={styles.addSmallBtn} onClick={onAddLieu}><Plus size={14} /></button>
+        </div>
+        {Object.entries(lieuxByType).map(([type, items]) => {
+          const meta = LIEU_TYPE_LABELS[type] || { emoji: "📌", label: type };
+          return (
+            <div key={type} style={styles.lieuGroup}>
+              <div style={styles.lieuGroupTitle}>
+                {meta.emoji} {meta.label}
+                <span style={styles.lieuCount}>{items.length}</span>
+              </div>
+              {items.map((lieu) => (
+                <button key={lieu.id}
+                  style={{ ...styles.lieuBtn, ...(selectedLieu?.id === lieu.id ? styles.lieuBtnActive : {}) }}
+                  onClick={() => { setSelectedLieu(lieu); setSubTab("equipements"); }}>
+                  <div style={styles.lieuBtnName}>{lieu.nom}</div>
+                  <div style={styles.lieuBtnMeta}>
+                    {lieu.stats?.total_equipements || 0} équip.
+                    {lieu.type === "salle_informatique" && ` · ${lieu.stats?.postes || 0} postes`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          );
+        })}
+      </aside>
+
+      {/* Contenu */}
+      <div style={styles.lieuxContent}>
+        {!selectedLieu
+          ? <EmptyState icon={<Building2 size={44} />} title="Sélectionnez un lieu" sub="Cliquez sur un lieu dans la liste à gauche." />
+          : (
+            <>
+              <div style={styles.lieuHeader}>
+                <div>
+                  <h2 style={styles.lieuTitle}>{selectedLieu.nom}</h2>
+                  <p style={styles.lieuSubtitle}>
+                    {LIEU_TYPE_LABELS[selectedLieu.type]?.emoji} {LIEU_TYPE_LABELS[selectedLieu.type]?.label}
+                    {selectedLieu.capacite && ` · ${selectedLieu.capacite} places`}
+                    {selectedLieu.occupant && ` · ${selectedLieu.occupant}`}
+                  </p>
+                </div>
+                <div style={styles.lieuStats}>
+                  <LieuStat label="Équipements"  val={selectedLieu.stats?.total_equipements || 0} color="var(--ip-teal)" />
+                  <LieuStat label="Fonctionnels" val={selectedLieu.stats?.fonctionnels || 0}       color="#2E7D32" />
+                  <LieuStat label="En panne"     val={selectedLieu.stats?.en_panne || 0}           color="#C62828" />
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {selectedLieu.type === "salle_informatique" && (
+                    <>
+                      <Btn secondary onClick={() => setShowES(true)}><Clock size={13} /> Entrée/Sortie</Btn>
+                      <Btn secondary onClick={loadHist}><ClipboardList size={13} /> Historique</Btn>
+                    </>
                   )}
-                  <TabBtn active={activeTab === "projecteurs"} onClick={() => setActiveTab("projecteurs")}>
-                    <Projector size={13} /> Projecteurs ({projecteursByLieu.length})
-                  </TabBtn>
+                  <Btn secondary onClick={() => onEditLieu(selectedLieu)}><Edit3 size={13} /> Modifier</Btn>
+                  <Btn ghost onClick={() => onDeleteLieu(selectedLieu.id)}><Trash2 size={13} /></Btn>
                 </div>
+              </div>
 
-                {activeTab === "equipements" && (
-                  <EquipementsTab
-                    equipements={equipementsByLieu}
-                    onAdd={() => {
-                      setModalType("equipement");
-                      setEditItem(null);
-                      setFormData({ lieu_id: selectedLieu.id });
-                      setShowModal(true);
-                    }}
-                    onEdit={(eq) => {
-                      setModalType("equipement");
-                      setEditItem(eq);
-                      setFormData(eq);
-                      setShowModal(true);
-                    }}
-                    onDelete={(id) => handleDelete("equipement", id)}
-                  />
+              <div style={styles.subTabs}>
+                <SubTab active={subTab === "equipements"} onClick={() => setSubTab("equipements")}>
+                  <Package size={13} /> Équipements ({equipsLieu.length})
+                </SubTab>
+                {selectedLieu.type === "salle_informatique" && (
+                  <SubTab active={subTab === "postes"} onClick={() => setSubTab("postes")}>
+                    <Monitor size={13} /> Postes ({postesLieu.length})
+                  </SubTab>
                 )}
-                {activeTab === "postes" && selectedLieu.type === LIEU_TYPES.SALLE_INFO && (
-                  <PostesTab
-                    postes={postesByLieu}
-                    onAdd={() => {
-                      setModalType("poste");
-                      setEditItem(null);
-                      setFormData({ salle_informatique_id: selectedLieu.id });
-                      setShowModal(true);
-                    }}
-                    onEdit={(poste) => {
-                      setModalType("poste");
-                      setEditItem(poste);
-                      setFormData(poste);
-                      setShowModal(true);
-                    }}
-                    onDelete={(id) => handleDelete("poste", id)}
-                  />
-                )}
-                {activeTab === "projecteurs" && (
-                  <ProjecteursTab
-                    projecteurs={projecteursByLieu}
-                    utilisations={utilisationsProjecteur}
-                    onAdd={() => {
-                      setModalType("projecteur");
-                      setEditItem(null);
-                      setFormData({ lieu_id: selectedLieu.id });
-                      setShowModal(true);
-                    }}
-                    onEdit={(proj) => {
-                      setModalType("projecteur");
-                      setEditItem(proj);
-                      setFormData(proj);
-                      setShowModal(true);
-                    }}
-                    onDelete={(id) => handleDelete("projecteur", id)}
-                    onAddUtilisation={(projId) => {
-                      setModalType("utilisation");
-                      setEditItem(null);
-                      setFormData({ projecteur_id: projId, lieu_id: selectedLieu.id });
-                      setShowModal(true);
-                    }}
-                  />
-                )}
+              </div>
+
+              {subTab === "equipements" && (
+                equipsLieu.length === 0
+                  ? <EmptyState icon={<Package size={36} />} title="Aucun équipement" sub="Ce lieu ne contient pas encore d'équipements." mini />
+                  : (
+                    <div style={styles.equipsGrid}>
+                      {equipsLieu.map((eq) => {
+                        const etatInfo = ETAT_STYLE[eq.etat] || ETAT_STYLE.fonctionnel;
+                        return (
+                          <div key={eq.id} style={{ ...styles.equipCard, ...(eq.nb_problemes_actifs > 0 ? styles.equipCardPb : {}) }}>
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span style={styles.refTag}>{eq.reference_catalogue}</span>
+                              <span style={{ ...styles.etatBadge, background: etatInfo.bg, color: etatInfo.color, fontSize: "0.65rem" }}>
+                                {etatInfo.label}
+                              </span>
+                            </div>
+                            <div style={styles.equipDesignation}>{eq.designation}</div>
+                            <div style={styles.equipMeta}>Qté : {eq.quantite || 1}</div>
+                            {eq.nb_problemes_actifs > 0 && (
+                              <div style={{ color: "#C62828", fontSize: "0.72rem", display: "flex", alignItems: "center", gap: 4 }}>
+                                <AlertTriangle size={11} /> {eq.nb_problemes_actifs} problème(s)
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+              )}
+
+              {subTab === "postes" && selectedLieu.type === "salle_informatique" && (
+                postesLieu.length === 0
+                  ? <EmptyState icon={<Monitor size={36} />} title="Aucun poste" sub="Aucun poste configuré." mini />
+                  : (
+                    <div style={styles.postesGrid}>
+                      {postesLieu.map((poste) => (
+                        <div key={poste.id} style={{ ...styles.posteCard, ...(poste.complet ? {} : styles.posteIncomplet) }}>
+                          <div style={styles.posteHeader}>
+                            <Monitor size={16} />
+                            <span style={styles.posteName}>{poste.nom}</span>
+                            {poste.complet ? <CircleCheck size={15} color="#2E7D32" /> : <AlertCircle size={15} color="#C62828" />}
+                          </div>
+                          <div style={styles.posteCompo}>
+                            {(poste.composition || []).map((comp) => (
+                              <div key={comp.id} style={styles.compRow}>
+                                <span style={styles.compType}>{comp.equipement?.type || "?"}</span>
+                                <span style={{ ...styles.compEtat, color: ["bon","neuf"].includes(comp.etat_qualitatif) ? "#2E7D32" : "#E65100" }}>
+                                  {comp.etat_qualitatif}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {!poste.complet && poste.manquants?.length > 0 && (
+                            <div style={styles.posteManquants}>Manquant : {poste.manquants.join(", ")}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )
+              )}
+            </>
+          )}
+      </div>
+
+      {/* Modal entrée/sortie */}
+      {showES && (
+        <Overlay onClose={() => setShowES(false)}>
+          <ModalBox title="Entrée / Sortie de salle" onClose={() => setShowES(false)}>
+            <div style={{ display: "flex", gap: 20, marginBottom: 16 }}>
+              {["entree","sortie"].map((t) => (
+                <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: "0.85rem" }}>
+                  <input type="radio" name="es_t" value={t} checked={esFrm.type === t}
+                    onChange={() => setEsFrm({ ...esFrm, type: t })} />
+                  {t === "entree" ? "🟢 Entrée" : "🔴 Sortie"}
+                </label>
+              ))}
+            </div>
+            <FInput label="Responsable *" value={esFrm.responsable} onChange={(v) => setEsFrm({ ...esFrm, responsable: v })} required />
+            <FSelect label="Type de responsable" value={esFrm.responsable_type}
+              onChange={(v) => setEsFrm({ ...esFrm, responsable_type: v })}
+              options={[{value:"enseignant",label:"Enseignant"},{value:"etudiant",label:"Étudiant"},{value:"personnel",label:"Personnel"}]} />
+            <FInput label="Date et heure *" type="datetime-local" value={esFrm.date} onChange={(v) => setEsFrm({ ...esFrm, date: v })} />
+            <FTextarea label="Observations avant" value={esFrm.observations_avant} onChange={(v) => setEsFrm({ ...esFrm, observations_avant: v })} />
+            {esFrm.type === "sortie" && (
+              <FTextarea label="Observations après" value={esFrm.observations_apres} onChange={(v) => setEsFrm({ ...esFrm, observations_apres: v })} />
+            )}
+            <div style={styles.modalFooter}>
+              <Btn ghost onClick={() => setShowES(false)}>Annuler</Btn>
+              <Btn primary onClick={handleES}>Enregistrer</Btn>
+            </div>
+          </ModalBox>
+        </Overlay>
+      )}
+
+      {/* Historique */}
+      {showHist && (
+        <Overlay onClose={() => setShowHist(false)}>
+          <ModalBox title={`Historique — ${selectedLieu?.nom}`} onClose={() => setShowHist(false)} wide>
+            {historique.length === 0 ? <p style={styles.hint}>Aucun enregistrement.</p> : (
+              <>
+                <Btn secondary onClick={() => {
+                  const w = window.open();
+                  w.document.write(`<html><body><h1>${selectedLieu?.nom}</h1>
+                    <table border="1" cellpadding="6">${historique.map((e) =>
+                      `<tr><td>${new Date(e.date).toLocaleString()}</td><td>${e.type}</td><td>${e.responsable}</td><td>${e.observations_avant||"—"}</td><td>${e.observations_apres||"—"}</td></tr>`
+                    ).join("")}</table></body></html>`);
+                  w.print();
+                }} style={{ marginBottom: 14 }}><Printer size={13} /> Imprimer</Btn>
+                <div style={styles.tableWrapper}>
+                  <table style={styles.table}>
+                    <thead><tr>{["Date","Type","Responsable","Obs. avant","Obs. après"].map((h) => <th key={h} style={styles.th}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {historique.map((e) => (
+                        <tr key={e.id} style={styles.tr}>
+                          <td style={styles.td}>{new Date(e.date).toLocaleString()}</td>
+                          <td style={styles.td}>
+                            <span style={{ ...styles.etatBadge, background: e.type==="entree"?"#E8F5E9":"#FFEBEE", color: e.type==="entree"?"#2E7D32":"#C62828" }}>
+                              {e.type}
+                            </span>
+                          </td>
+                          <td style={styles.td}>{e.responsable} <span style={{ color:"var(--ip-gray)",fontSize:"0.71rem" }}>({e.responsable_type})</span></td>
+                          <td style={styles.td}>{e.observations_avant||"—"}</td>
+                          <td style={styles.td}>{e.observations_apres||"—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
-          </main>
-        </div>
-      </div>
-
-      {showModal && (
-        <Modal
-          type={modalType}
-          data={formData}
-          editItem={editItem}
-          onClose={() => setShowModal(false)}
-          onSaved={async () => {
-            await loadData();
-            setShowModal(false);
-            showToast("ok", "Enregistré");
-          }}
-          showToast={showToast}
-        />
-      )}
-
-      {showEntreeSortieModal && (
-        <div style={sx.overlay} onMouseDown={() => setShowEntreeSortieModal(false)}>
-          <div style={mx.box} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={mx.header}>
-              <div style={mx.title}>Enregistrer une entrée / sortie</div>
-              <button style={mx.close} onClick={() => setShowEntreeSortieModal(false)}>
-                <X size={15} />
-              </button>
-            </div>
-            <div style={mx.body}>
-              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="radio"
-                    name="type"
-                    value="entree"
-                    checked={entreeSortieForm.type === "entree"}
-                    onChange={() => setEntreeSortieForm({ ...entreeSortieForm, type: "entree" })}
-                  />{" "}
-                  Entrée
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input
-                    type="radio"
-                    name="type"
-                    value="sortie"
-                    checked={entreeSortieForm.type === "sortie"}
-                    onChange={() => setEntreeSortieForm({ ...entreeSortieForm, type: "sortie" })}
-                  />{" "}
-                  Sortie
-                </label>
-              </div>
-              <Input
-                label="Responsable"
-                value={entreeSortieForm.responsable}
-                onChange={(v) => setEntreeSortieForm({ ...entreeSortieForm, responsable: v })}
-                required
-              />
-              <Select
-                label="Type de responsable"
-                value={entreeSortieForm.responsableType}
-                onChange={(v) => setEntreeSortieForm({ ...entreeSortieForm, responsableType: v })}
-                options={[
-                  { value: "enseignant", label: "Enseignant" },
-                  { value: "etudiant", label: "Étudiant" },
-                  { value: "personnel", label: "Personnel administratif" },
-                ]}
-              />
-              <Input
-                label="Date et heure"
-                type="datetime-local"
-                value={entreeSortieForm.date}
-                onChange={(v) => setEntreeSortieForm({ ...entreeSortieForm, date: v })}
-                required
-              />
-              <Textarea
-                label="Observations avant (état du matériel)"
-                value={entreeSortieForm.observationsAvant}
-                onChange={(v) => setEntreeSortieForm({ ...entreeSortieForm, observationsAvant: v })}
-              />
-              {entreeSortieForm.type === "sortie" && (
-                <Textarea
-                  label="Observations après (problèmes constatés)"
-                  value={entreeSortieForm.observationsApres}
-                  onChange={(v) => setEntreeSortieForm({ ...entreeSortieForm, observationsApres: v })}
-                />
-              )}
-            </div>
-            <div style={mx.footer}>
-              <button style={sx.btnGhost} onClick={() => setShowEntreeSortieModal(false)}>
-                Annuler
-              </button>
-              <button style={sx.btnPrimary} onClick={handleEntreeSortie}>
-                Enregistrer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showHistorique && (
-        <div style={sx.overlay} onMouseDown={() => setShowHistorique(false)}>
-          <div style={{ ...mx.box, width: "min(900px, 96vw)" }} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={mx.header}>
-              <div style={mx.title}>Historique des entrées/sorties - {selectedLieu?.nom}</div>
-              <button style={mx.close} onClick={() => setShowHistorique(false)}>
-                <X size={15} />
-              </button>
-            </div>
-            <div style={mx.body}>
-              {historiqueEntrees.length === 0 ? (
-                <div style={sx.hint}>Aucun enregistrement.</div>
-              ) : (
-                <>
-                  <button style={{ ...sx.btnSecondary, marginBottom: 16 }} onClick={imprimerFiche}>
-                    <Printer size={13} /> Imprimer la fiche
-                  </button>
-                  <table style={tabStyles.table}>
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Responsable</th>
-                        <th>Observations avant</th>
-                        <th>Observations après</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historiqueEntrees.map((e) => (
-                        <tr key={e.id}>
-                          <td>{new Date(e.date).toLocaleString()}</td>
-                          <td>{e.type === "entree" ? "Entrée" : "Sortie"}</td>
-                          <td>
-                            {e.responsable} ({e.responsableType})
-                          </td>
-                          <td>{e.observationsAvant || "—"}</td>
-                          <td>{e.observationsApres || "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </>
-              )}
-            </div>
-            <div style={mx.footer}>
-              <button style={sx.btnGhost} onClick={() => setShowHistorique(false)}>
-                Fermer
-              </button>
-            </div>
-          </div>
-        </div>
+            <div style={styles.modalFooter}><Btn ghost onClick={() => setShowHist(false)}>Fermer</Btn></div>
+          </ModalBox>
+        </Overlay>
       )}
     </div>
   );
 }
 
-// ========== ONGLET ÉQUIPEMENTS ==========
-function EquipementsTab({ equipements, onAdd, onEdit, onDelete }) {
+function LieuStat({ label, val, color }) {
   return (
-    <div style={tabStyles.container}>
-      <div style={tabStyles.header}>
-        <span style={tabStyles.count}>{equipements.length} équipement(s)</span>
-        <button style={sx.btnPrimary} onClick={onAdd}>
-          <Plus size={13} /> Ajouter
-        </button>
-      </div>
-      {equipements.length === 0 ? (
-        <div style={sx.emptyMini}>
-          <Package size={32} strokeWidth={1} color="var(--ip-gray)" />
-          <div>Aucun équipement dans ce lieu.</div>
-          <button style={sx.btnSecondary} onClick={onAdd}>
-            Ajouter un équipement
-          </button>
-        </div>
-      ) : (
-        <div style={tabStyles.grid}>
-          {equipements.map((eq) => {
-            const IconComp = equipIconMap[eq.type] || Package;
-            const etatInfo = etatStyle[eq.etat] || etatStyle.fonctionnel;
-            const EtatIcon = etatInfo.icon;
-            return (
-              <div key={eq.id} style={tabStyles.card}>
-                <div style={tabStyles.cardIcon}>
-                  <IconComp size={24} strokeWidth={1.5} />
-                </div>
-                <div style={tabStyles.cardContent}>
-                  <div style={tabStyles.cardTitle}>{eq.reference || "Sans réf"}</div>
-                  <div style={tabStyles.cardMeta}>
-                    <span style={tabStyles.typeBadge}>{eq.type}</span>
-                    <span style={{ ...tabStyles.etatBadge, background: etatInfo.bg, color: etatInfo.color }}>
-                      <EtatIcon size={10} /> {etatInfo.label}
-                    </span>
-                  </div>
-                  {eq.date_achat && (
-                    <div style={tabStyles.cardDate}>Achat: {new Date(eq.date_achat).toLocaleDateString()}</div>
-                  )}
-                </div>
-                <div style={tabStyles.cardActions}>
-                  <IconBtn onClick={() => onEdit(eq)}>
-                    <Edit3 size={13} />
-                  </IconBtn>
-                  <IconBtn warn onClick={() => onDelete(eq.id)}>
-                    <Trash2 size={13} />
-                  </IconBtn>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: "1.4rem", fontWeight: 900, color }}>{val}</div>
+      <div style={{ fontSize: "0.65rem", color: "var(--ip-gray)", textTransform: "uppercase", fontWeight: 600 }}>{label}</div>
     </div>
   );
 }
 
-// ========== ONGLET POSTES AVEC VUE DÉTAILLÉE ==========
-function PostesTab({ postes, onAdd, onEdit, onDelete }) {
-  const [selectedPoste, setSelectedPoste] = useState(null);
-  const [posteDetails, setPosteDetails] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [editingComp, setEditingComp] = useState(null);
-  const [editForm, setEditForm] = useState({ etatQualitatif: "", remarque: "" });
-  const [retirerForm, setRetirerForm] = useState({ localisation: "magasin", raisonRetrait: "" });
-  const [addingComp, setAddingComp] = useState(false);
-  const [newCompForm, setNewCompForm] = useState({ equipement_id: "", etatQualitatif: "bon", remarque: "" });
-  const [equipementsDisponibles, setEquipementsDisponibles] = useState([]);
+// ══════════════════════════════════════════════════════════
+// MOUVEMENTS
+// ══════════════════════════════════════════════════════════
+function MouvementsTab({ equipements, lieux, showToast, onRefresh }) {
+  const [typeMvt, setTypeMvt] = useState("transfert");
+  const [form, setForm]       = useState({ quantite: 1 });
+  const [saving, setSaving]   = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Charger les équipements disponibles pour ajout (non affectés à un poste)
-  useEffect(() => {
-    apiFetch("/materiel/equipements").then(data => {
-      // Filtrer ceux qui ne sont pas déjà dans un poste actif (ou selon besoin)
-      setEquipementsDisponibles(Array.isArray(data) ? data : []);
-    }).catch(console.error);
-  }, []);
-
-  const loadPosteDetails = async (posteId) => {
-    setLoading(true);
-    try {
-      const [composition, etatComplet] = await Promise.all([
-        apiFetch(`/materiel/poste/${posteId}/composition`),
-        apiFetch(`/materiel/poste/${posteId}/etat-complet`)
-      ]);
-      setPosteDetails({ composition, ...etatComplet });
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenDetail = async (poste) => {
-    setSelectedPoste(poste);
-    await loadPosteDetails(poste.id);
-    setShowDetailModal(true);
-  };
-
-  const handleUpdateComposition = async (compId) => {
-    if (!editForm.etatQualitatif) return;
-    try {
-      await apiFetch(`/materiel/poste/${selectedPoste.id}/composition/${compId}`, {
-        method: "PUT",
-        body: JSON.stringify({ etatQualitatif: editForm.etatQualitatif, remarque: editForm.remarque })
-      });
-      await loadPosteDetails(selectedPoste.id);
-      setEditingComp(null);
-      setEditForm({ etatQualitatif: "", remarque: "" });
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  const handleRetirerComposant = async (compId) => {
-    if (!retirerForm.localisation) return;
-    try {
-      await apiFetch(`/materiel/poste/${selectedPoste.id}/composition/${compId}/retirer`, {
-        method: "POST",
-        body: JSON.stringify({ localisation: retirerForm.localisation, raisonRetrait: retirerForm.raisonRetrait })
-      });
-      await loadPosteDetails(selectedPoste.id);
-      setRetirerForm({ localisation: "magasin", raisonRetrait: "" });
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  const handleAjouterComposant = async () => {
-    if (!newCompForm.equipement_id) return;
-    try {
-      await apiFetch(`/materiel/poste/${selectedPoste.id}/composition`, {
-        method: "POST",
-        body: JSON.stringify({
-          equipement_id: newCompForm.equipement_id,
-          etatQualitatif: newCompForm.etatQualitatif,
-          remarque: newCompForm.remarque
-        })
-      });
-      await loadPosteDetails(selectedPoste.id);
-      setAddingComp(false);
-      setNewCompForm({ equipement_id: "", etatQualitatif: "bon", remarque: "" });
-    } catch (err) {
-      alert(err.message);
-    }
-  };
-
-  return (
-    <div style={tabStyles.container}>
-      <div style={tabStyles.header}>
-        <span style={tabStyles.count}>{postes.length} poste(s)</span>
-        <button style={sx.btnPrimary} onClick={onAdd}><Plus size={13} /> Ajouter un poste</button>
-      </div>
-      {postes.length === 0 ? (
-        <div style={sx.emptyMini}>
-          <Monitor size={32} strokeWidth={1} color="var(--ip-gray)" />
-          <div>Aucun poste dans cette salle.</div>
-          <button style={sx.btnSecondary} onClick={onAdd}>Créer un poste</button>
-        </div>
-      ) : (
-        <div style={tabStyles.list}>
-          {postes.map(poste => (
-            <div key={poste.id} style={tabStyles.listItem}>
-              <div style={tabStyles.itemMain}>
-                <div style={tabStyles.itemIcon}><Monitor size={18} /></div>
-                <div style={tabStyles.itemInfo}>
-                  <div style={tabStyles.itemTitle}>Poste {poste.nom}</div>
-                  <div style={tabStyles.itemMeta}>ID: {poste.id.slice(0, 8)}</div>
-                </div>
-                <div style={tabStyles.itemActions}>
-                  <button style={sx.btnSecondary} onClick={() => handleOpenDetail(poste)}>
-                    <Eye size={13} /> Détail & état
-                  </button>
-                  <IconBtn onClick={() => onEdit(poste)}><Edit3 size={13} /></IconBtn>
-                  <IconBtn warn onClick={() => onDelete(poste.id)}><Trash2 size={13} /></IconBtn>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Modal détaillée */}
-      {showDetailModal && selectedPoste && posteDetails && (
-        <div style={sx.overlay} onMouseDown={() => setShowDetailModal(false)}>
-          <div style={{ ...mx.box, width: "min(900px, 96vw)" }} onMouseDown={e => e.stopPropagation()}>
-            <div style={mx.header}>
-              <div style={mx.title}>Poste {selectedPoste.nom}</div>
-              <button style={mx.close} onClick={() => setShowDetailModal(false)}><X size={15} /></button>
-            </div>
-            <div style={mx.body}>
-              {loading ? (
-                <div>Chargement...</div>
-              ) : (
-                <>
-                  {/* Statut global */}
-                  <div style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: posteDetails.complet ? "#E8F5E9" : "#FFEBEE", color: posteDetails.complet ? "#2E7D32" : "#C62828" }}>
-                    <strong>{posteDetails.complet ? "✅ Poste complet" : "❌ Poste incomplet"}</strong>
-                    {!posteDetails.complet && <div style={{ marginTop: 4, fontSize: "0.8rem" }}>Raisons : {posteDetails.raisons?.join(", ")}</div>}
-                  </div>
-
-                  {/* Liste des composants */}
-                  <h4>Composants actuellement dans le poste</h4>
-                  <table style={tabStyles.table}>
-                    <thead><tr><th>Type</th><th>Référence</th><th>État qualitatif</th><th>Remarque</th><th>Actions</th></tr></thead>
-                    <tbody>
-                      {posteDetails.composants?.map(comp => (
-                        <tr key={comp.id}>
-                          <td>{comp.equipement?.type || "?"}</td>
-                          <td>{comp.equipement?.reference || comp.equipement_id}</td>
-                          <td>
-                            {editingComp === comp.id ? (
-                              <select value={editForm.etatQualitatif} onChange={e => setEditForm({...editForm, etatQualitatif: e.target.value})}>
-                                <option value="bon">Bon état</option>
-                                <option value="usé">Usé</option>
-                                <option value="sale">Sale</option>
-                                <option value="défectueux">Défectueux</option>
-                                <option value="à remplacer">À remplacer</option>
-                              </select>
-                            ) : (
-                              <span style={{ fontWeight: 700, color: comp.etatQualitatif === "bon" ? "green" : comp.etatQualitatif === "sale" ? "orange" : "red" }}>
-                                {comp.etatQualitatif}
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            {editingComp === comp.id ? (
-                              <input type="text" value={editForm.remarque} onChange={e => setEditForm({...editForm, remarque: e.target.value})} style={sx.input} />
-                            ) : (comp.remarque || "—")}
-                          </td>
-                          <td>
-                            {editingComp === comp.id ? (
-                              <>
-                                <button style={sx.btnGhost} onClick={() => handleUpdateComposition(comp.id)}>Enregistrer</button>
-                                <button style={sx.btnGhost} onClick={() => setEditingComp(null)}>Annuler</button>
-                              </>
-                            ) : (
-                              <>
-                                <button style={sx.iconBtn} onClick={() => { setEditingComp(comp.id); setEditForm({ etatQualitatif: comp.etatQualitatif, remarque: comp.remarque || "" }); }}>
-                                  <Edit3 size={13} />
-                                </button>
-                                <button style={{...sx.iconBtn, color: "var(--ip-orange)"}} onClick={() => {
-                                  if (window.confirm("Retirer ce composant du poste ?")) handleRetirerComposant(comp.id);
-                                }}>
-                                  <Trash2 size={13} />
-                                </button>
-                              </>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-
-                  {/* Formulaire pour ajouter un composant */}
-                  <div style={{ marginTop: 20 }}>
-                    <button style={sx.btnSecondary} onClick={() => setAddingComp(!addingComp)}>
-                      <Plus size={13} /> Ajouter un composant
-                    </button>
-                    {addingComp && (
-                      <div style={{ marginTop: 12, padding: 12, border: "1px solid var(--border)", borderRadius: 12 }}>
-                        <select value={newCompForm.equipement_id} onChange={e => setNewCompForm({...newCompForm, equipement_id: e.target.value})} style={sx.input}>
-                          <option value="">-- Choisir un équipement --</option>
-                          {equipementsDisponibles.filter(eq => eq.currentLocation !== "lieu" || !eq.currentLocationId).map(eq => (
-                            <option key={eq.id} value={eq.id}>{eq.reference} ({eq.type})</option>
-                          ))}
-                        </select>
-                        <select value={newCompForm.etatQualitatif} onChange={e => setNewCompForm({...newCompForm, etatQualitatif: e.target.value})} style={sx.input}>
-                          <option value="bon">Bon état</option>
-                          <option value="usé">Usé</option>
-                          <option value="sale">Sale</option>
-                          <option value="défectueux">Défectueux</option>
-                          <option value="à remplacer">À remplacer</option>
-                        </select>
-                        <input type="text" placeholder="Remarque" value={newCompForm.remarque} onChange={e => setNewCompForm({...newCompForm, remarque: e.target.value})} style={sx.input} />
-                        <button style={sx.btnPrimary} onClick={handleAjouterComposant}>Ajouter</button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-            <div style={mx.footer}>
-              <button style={sx.btnGhost} onClick={() => setShowDetailModal(false)}>Fermer</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+  const equipsDispo = equipements.filter((e) =>
+    typeMvt === "transfert"
+      ? e.localisation?.type === "stock"
+      : e.localisation?.type === "lieu" || e.localisation?.type === "poste"
   );
-}
 
-// ========== ONGLET PROJECTEURS ==========
-function ProjecteursTab({ projecteurs, utilisations, onAdd, onEdit, onDelete, onAddUtilisation }) {
-  const [expandedProj, setExpandedProj] = useState(null);
-  return (
-    <div style={tabStyles.container}>
-      <div style={tabStyles.header}>
-        <span style={tabStyles.count}>{projecteurs.length} projecteur(s)</span>
-        <button style={sx.btnPrimary} onClick={onAdd}>
-          <Plus size={13} /> Ajouter
-        </button>
-      </div>
-      {projecteurs.length === 0 ? (
-        <div style={sx.emptyMini}>
-          <Projector size={32} strokeWidth={1} color="var(--ip-gray)" />
-          <div>Aucun projecteur dans ce lieu.</div>
-          <button style={sx.btnSecondary} onClick={onAdd}>
-            Ajouter un projecteur
-          </button>
-        </div>
-      ) : (
-        <div style={tabStyles.list}>
-          {projecteurs.map((proj) => {
-            const utilisationsProj = utilisations.filter((u) => u.projecteur_id === proj.id);
-            const etatInfo = etatStyle[proj.etat] || etatStyle.fonctionnel;
-            const EtatIcon = etatInfo.icon;
-            return (
-              <div key={proj.id} style={tabStyles.listItem}>
-                <div style={tabStyles.itemMain}>
-                  <div style={tabStyles.itemIcon}>
-                    <Projector size={18} />
-                  </div>
-                  <div style={tabStyles.itemInfo}>
-                    <div style={tabStyles.itemTitle}>
-                      {proj.marque} {proj.modele}
-                    </div>
-                    <div style={tabStyles.itemMeta}>
-                      S/N: {proj.numero_serie || "N/A"} ·
-                      <span
-                        style={{
-                          ...tabStyles.etatBadge,
-                          background: etatInfo.bg,
-                          color: etatInfo.color,
-                          marginLeft: 6,
-                        }}
-                      >
-                        <EtatIcon size={10} /> {etatInfo.label}
-                      </span>
-                    </div>
-                    {proj.derniere_maintenance && (
-                      <div style={tabStyles.cardDate}>
-                        Dernière maintenance: {new Date(proj.derniere_maintenance).toLocaleDateString()}
-                      </div>
-                    )}
-                  </div>
-                  <div style={tabStyles.itemActions}>
-                    <button
-                      style={sx.btnGhost}
-                      onClick={() => setExpandedProj(expandedProj === proj.id ? null : proj.id)}
-                    >
-                      <Calendar size={13} /> Utilisations ({utilisationsProj.length})
-                    </button>
-                    <button style={sx.btnSecondary} onClick={() => onAddUtilisation(proj.id)}>
-                      <Plus size={13} /> Enreg. utilisation
-                    </button>
-                    <IconBtn onClick={() => onEdit(proj)}>
-                      <Edit3 size={13} />
-                    </IconBtn>
-                    <IconBtn warn onClick={() => onDelete(proj.id)}>
-                      <Trash2 size={13} />
-                    </IconBtn>
-                  </div>
-                </div>
-                {expandedProj === proj.id && (
-                  <div style={tabStyles.subPanel}>
-                    {utilisationsProj.length === 0 ? (
-                      <div style={sx.hint}>Aucune utilisation enregistrée pour ce projecteur.</div>
-                    ) : (
-                      <table style={tabStyles.table}>
-                        <thead>
-                          <tr>
-                            <th>Date</th>
-                            <th>Salle</th>
-                            <th>Utilisateur</th>
-                            <th>Durée</th>
-                            <th>Remarques</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {utilisationsProj.map((u) => (
-                            <tr key={u.id}>
-                              <td>{new Date(u.date_utilisation).toLocaleString()}</td>
-                              <td>{u.lieu_nom || u.lieu_id}</td>
-                              <td>{u.utilisateur_nom || u.utilisateur_id || "—"}</td>
-                              <td>{u.duree_minutes} min</td>
-                              <td>{u.remarques || "—"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ========== MODAL GÉNÉRIQUE ==========
-function Modal({ type, data, editItem, onClose, onSaved, showToast }) {
-  const [form, setForm] = useState(data || {});
-  const [saving, setSaving] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
+    if (!form.equipement_id) { showToast("err", "Sélectionnez un équipement"); return; }
+    if (typeMvt === "transfert" && !form.lieu_id) { showToast("err", "Sélectionnez un lieu"); return; }
     setSaving(true);
     try {
-      const method = editItem ? "PUT" : "POST";
-      const url = `/materiel/${type}${editItem ? `/${editItem.id}` : ""}`;
-      await apiFetch(url, { method, body: JSON.stringify(form) });
-      onSaved();
-    } catch (err) {
-      showToast("err", err.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const getTitle = () => {
-    const prefix = editItem ? "Modifier" : "Ajouter";
-    if (type === "lieu") return `${prefix} un lieu`;
-    if (type === "equipement") return `${prefix} un équipement`;
-    if (type === "poste") return `${prefix} un poste de travail`;
-    if (type === "projecteur") return `${prefix} un projecteur`;
-    if (type === "utilisation") return "Enregistrer une utilisation";
-    return "Formulaire";
+      const url = typeMvt === "transfert"
+        ? "/materiel/mouvement/transfert-lieu"
+        : "/materiel/mouvement/retour-stock";
+      await apiFetch(url, { method: "POST", body: JSON.stringify(form) });
+      showToast("ok", "Mouvement enregistré");
+      setForm({ quantite: 1 });
+      onRefresh();
+    } catch (err) { showToast("err", err.message); }
+    finally { setSaving(false); }
   };
 
   return (
-    <div style={sx.overlay} onMouseDown={onClose}>
-      <div style={mx.box} onMouseDown={(e) => e.stopPropagation()}>
-        <div style={mx.header}>
-          <div style={mx.title}>{getTitle()}</div>
-          <button style={mx.close} onClick={onClose}>
-            <X size={15} />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} style={mx.body}>
-          {type === "lieu" && (
-            <>
-              <Input label="Nom *" value={form.nom || ""} onChange={(v) => setForm({ ...form, nom: v })} required />
-              <Select
-                label="Type *"
-                value={form.type || ""}
-                onChange={(v) => setForm({ ...form, type: v })}
-                options={[
-                  { value: LIEU_TYPES.SALLE_INFO, label: "🏫 Salle informatique" },
-                  { value: LIEU_TYPES.SALLE_COURS, label: "📖 Salle de cours" },
-                  { value: LIEU_TYPES.BUREAU, label: "💼 Bureau" },
-                ]}
-                required
-              />
-              <Input
-                label="Capacité (places)"
-                type="number"
-                value={form.capacite || ""}
-                onChange={(v) => setForm({ ...form, capacite: v })}
-              />
-              <Input
-                label="Occupant (pour bureau)"
-                value={form.occupant || ""}
-                onChange={(v) => setForm({ ...form, occupant: v })}
-              />
-            </>
-          )}
-          {type === "equipement" && (
-            <>
-              <Select
-                label="Type *"
-                value={form.type || ""}
-                onChange={(v) => setForm({ ...form, type: v })}
-                options={[
-                  { value: EQUIPEMENT_TYPES.POSTE_COMPOSANT, label: "🖥️ Composant de poste" },
-                  { value: EQUIPEMENT_TYPES.PROJECTEUR, label: "📽️ Projecteur" },
-                  { value: EQUIPEMENT_TYPES.RALLONGE, label: "🔌 Rallonge" },
-                  { value: EQUIPEMENT_TYPES.SUPPORT_PROJECTION, label: "📎 Support de projection" },
-                  { value: EQUIPEMENT_TYPES.REGULATEUR, label: "⚡ Régulateur de tension" },
-                  { value: EQUIPEMENT_TYPES.AUTRE, label: "📦 Autre" },
-                ]}
-                required
-              />
-              <Input
-                label="Référence / modèle *"
-                value={form.reference || ""}
-                onChange={(v) => setForm({ ...form, reference: v })}
-                required
-              />
-              <Select
-                label="État"
-                value={form.etat || "fonctionnel"}
-                onChange={(v) => setForm({ ...form, etat: v })}
-                options={[
-                  { value: "fonctionnel", label: "✅ Fonctionnel" },
-                  { value: "panne", label: "⚠️ En panne" },
-                  { value: "maintenance", label: "🔧 En maintenance" },
-                ]}
-              />
-              <Input
-                label="Date d'achat"
-                type="date"
-                value={form.date_achat || ""}
-                onChange={(v) => setForm({ ...form, date_achat: v })}
-              />
-              <Input
-                label="Garantie (fin)"
-                type="date"
-                value={form.garantie_fin || ""}
-                onChange={(v) => setForm({ ...form, garantie_fin: v })}
-              />
-            </>
-          )}
-          {type === "poste" && (
-            <>
-              <Input
-                label="Nom du poste *"
-                value={form.nom || ""}
-                onChange={(v) => setForm({ ...form, nom: v })}
-                required
-              />
-            </>
-          )}
-          {type === "projecteur" && (
-            <>
-              <Input
-                label="Marque *"
-                value={form.marque || ""}
-                onChange={(v) => setForm({ ...form, marque: v })}
-                required
-              />
-              <Input
-                label="Modèle *"
-                value={form.modele || ""}
-                onChange={(v) => setForm({ ...form, modele: v })}
-                required
-              />
-              <Input
-                label="Numéro de série"
-                value={form.numero_serie || ""}
-                onChange={(v) => setForm({ ...form, numero_serie: v })}
-              />
-              <Select
-                label="État"
-                value={form.etat || "fonctionnel"}
-                onChange={(v) => setForm({ ...form, etat: v })}
-                options={[
-                  { value: "fonctionnel", label: "✅ Fonctionnel" },
-                  { value: "panne", label: "⚠️ En panne" },
-                  { value: "maintenance", label: "🔧 En maintenance" },
-                ]}
-              />
-              <Input
-                label="Date d'installation"
-                type="date"
-                value={form.date_installation || ""}
-                onChange={(v) => setForm({ ...form, date_installation: v })}
-              />
-              <Input
-                label="Dernière maintenance"
-                type="date"
-                value={form.derniere_maintenance || ""}
-                onChange={(v) => setForm({ ...form, derniere_maintenance: v })}
-              />
-            </>
-          )}
-          {type === "utilisation" && (
-            <>
-              <Input
-                label="Date et heure *"
-                type="datetime-local"
-                value={form.date_utilisation || ""}
-                onChange={(v) => setForm({ ...form, date_utilisation: v })}
-                required
-              />
-              <Input
-                label="Durée (minutes)"
-                type="number"
-                value={form.duree_minutes || ""}
-                onChange={(v) => setForm({ ...form, duree_minutes: v })}
-              />
-              <Input
-                label="Enseignant / utilisateur"
-                value={form.utilisateur_nom || ""}
-                onChange={(v) => setForm({ ...form, utilisateur_nom: v })}
-              />
-              <Textarea
-                label="Remarques"
-                value={form.remarques || ""}
-                onChange={(v) => setForm({ ...form, remarques: v })}
-              />
-            </>
-          )}
-          <div style={mx.footer}>
-            <button type="button" style={sx.btnGhost} onClick={onClose}>
-              Annuler
+    <div style={styles.mvtPage}>
+      <div style={styles.mvtTypes}>
+        {[
+          { id: "transfert", label: "Stock → Lieu",  icon: ArrowRightLeft, desc: "Affecter du matériel du stock vers une salle" },
+          { id: "retour",    label: "Lieu → Stock",   icon: Archive,        desc: "Récupérer du matériel depuis un lieu" },
+        ].map((t) => {
+          const Icon = t.icon;
+          return (
+            <button key={t.id}
+              style={{ ...styles.mvtTypeCard, ...(typeMvt === t.id ? styles.mvtTypeCardActive : {}) }}
+              onClick={() => { setTypeMvt(t.id); setForm({ quantite: 1 }); }}>
+              <Icon size={22} />
+              <div style={{ fontWeight: 700 }}>{t.label}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--ip-gray)" }}>{t.desc}</div>
             </button>
-            <button type="submit" style={sx.btnPrimary} disabled={saving}>
-              {saving ? "Enregistrement..." : "Enregistrer"}
-            </button>
-          </div>
-        </form>
+          );
+        })}
+      </div>
+
+      <div style={styles.mvtForm}>
+        <FSelect label="Équipement *" value={form.equipement_id || ""} onChange={(v) => set("equipement_id", v)}
+          options={equipsDispo.map((e) => ({ value: e.id, label: `${e.reference_catalogue} — ${e.designation} (Qté: ${e.quantite || 1})` }))} />
+        {typeMvt === "transfert" && (
+          <FSelect label="Lieu de destination *" value={form.lieu_id || ""} onChange={(v) => set("lieu_id", v)}
+            options={lieux.filter((l) => l.type !== "reparateur").map((l) => ({ value: l.id, label: l.nom }))} />
+        )}
+        <FInput label="Quantité" type="number" value={form.quantite} onChange={(v) => set("quantite", parseInt(v))} />
+        <FInput label="Responsable" value={form.responsable || ""} onChange={(v) => set("responsable", v)} />
+        <FInput label="Motif" value={form.motif || ""} onChange={(v) => set("motif", v)} />
+        <Btn primary onClick={handleSubmit} disabled={saving} style={{ marginTop: 8 }}>
+          <Check size={14} /> {saving ? "Enregistrement…" : "Enregistrer le mouvement"}
+        </Btn>
       </div>
     </div>
   );
 }
 
-// ========== COMPOSANTS UTILITAIRES ==========
-function Input({ label, type = "text", value, onChange, required, placeholder }) {
+// ══════════════════════════════════════════════════════════
+// PROBLÈMES
+// ══════════════════════════════════════════════════════════
+function ProblemesTab({ equipements, showToast, onRefresh }) {
+  const [selId, setSelId]         = useState("");
+  const [problemes, setProblemes] = useState([]);
+  const [loadingP, setLoadingP]   = useState(false);
+  const [showForm, setShowForm]   = useState(false);
+  const [form, setForm]           = useState({ gravite: "moyenne" });
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const loadProblemes = async (id) => {
+    if (!id) return;
+    setLoadingP(true);
+    try {
+      const data = await apiFetch(`/materiel/problemes/${id}`);
+      setProblemes(Array.isArray(data) ? data : []);
+    } catch (err) { showToast("err", err.message); }
+    finally { setLoadingP(false); }
+  };
+
+  const handleSignaler = async () => {
+    if (!selId || !form.type_probleme) { showToast("err", "Type de problème requis"); return; }
+    try {
+      await apiFetch("/materiel/probleme", { method: "POST", body: JSON.stringify({ ...form, equipement_id: selId }) });
+      showToast("ok", "Problème signalé");
+      loadProblemes(selId);
+      onRefresh();
+      setForm({ gravite: "moyenne" });
+      setShowForm(false);
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const handleResoudre = async (pbId) => {
+    const resolution = window.prompt("Notes de résolution ?", "Réparé");
+    if (resolution === null) return;
+    try {
+      await apiFetch(`/materiel/probleme/${pbId}/resoudre`, {
+        method: "PUT", body: JSON.stringify({ resolution, resolu_par: "Technicien", nouvel_etat: "fonctionnel" }),
+      });
+      showToast("ok", "Problème résolu");
+      loadProblemes(selId);
+      onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const selEquip = equipements.find((e) => e.id === selId);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-      <label style={{ fontSize: "0.71rem", fontWeight: 800, color: "var(--ip-gray)" }}>
-        {label}
-        {required && " *"}
-      </label>
-      <input
-        type={type}
-        style={sx.input}
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-      />
+    <div>
+      <div style={styles.tabHeader}>
+        <div style={styles.filters}>
+          <FSelect label="" value={selId}
+            onChange={(v) => { setSelId(v); loadProblemes(v); setShowForm(false); }}
+            options={equipements.map((e) => ({ value: e.id, label: `${e.reference_catalogue} — ${e.designation}` }))} />
+          {selId && <Btn primary onClick={() => setShowForm(!showForm)}><Plus size={14} /> Signaler un problème</Btn>}
+        </div>
+      </div>
+
+      {showForm && (
+        <div style={styles.pbForm}>
+          <div style={styles.pbFormRow}>
+            <FSelect label="Type *" value={form.type_probleme || ""} onChange={(v) => set("type_probleme", v)}
+              options={TYPES_PROBLEMES.map((t) => ({ value: t, label: t.replace(/_/g, " ") }))} />
+            <FSelect label="Gravité" value={form.gravite} onChange={(v) => set("gravite", v)}
+              options={Object.entries(GRAVITE_STYLE).map(([k, v]) => ({ value: k, label: v.label }))} />
+          </div>
+          <FTextarea label="Description" value={form.description || ""} onChange={(v) => set("description", v)} />
+          <FInput label="Signalé par" value={form.signale_par || ""} onChange={(v) => set("signale_par", v)} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn ghost onClick={() => setShowForm(false)}>Annuler</Btn>
+            <Btn primary onClick={handleSignaler}><AlertTriangle size={13} /> Signaler</Btn>
+          </div>
+        </div>
+      )}
+
+      {selId && (
+        <div style={{ marginTop: 20 }}>
+          <h4 style={styles.detailSection}>
+            Problèmes — {selEquip?.designation}
+            {loadingP && <span style={styles.hint}> Chargement…</span>}
+          </h4>
+          {!loadingP && problemes.length === 0 && (
+            <p style={{ ...styles.hint, color: "#2E7D32" }}>✓ Aucun problème pour cet équipement</p>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {problemes.map((pb) => {
+              const grav = GRAVITE_STYLE[pb.gravite] || GRAVITE_STYLE.moyenne;
+              return (
+                <div key={pb.id} style={{ ...styles.pbItem, ...(pb.resolu ? styles.pbResolu : {}) }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontWeight: 700 }}>{pb.type_probleme?.replace(/_/g, " ")}</span>
+                    <span style={{ ...styles.etatBadge, background: grav.bg, color: grav.color }}>{grav.label}</span>
+                    {pb.resolu
+                      ? <span style={{ ...styles.etatBadge, background: "#E8F5E9", color: "#2E7D32" }}>✓ Résolu</span>
+                      : <span style={{ ...styles.etatBadge, background: "#FFEBEE", color: "#C62828" }}>Actif</span>}
+                  </div>
+                  {pb.description && <div style={styles.pbDesc}>{pb.description}</div>}
+                  <div style={styles.pbMeta}>
+                    Signalé par {pb.signale_par} le {new Date(pb.date_signalement).toLocaleDateString()}
+                    {pb.resolu && ` · Résolu le ${new Date(pb.date_resolution).toLocaleDateString()}`}
+                  </div>
+                  {pb.resolution && <div style={{ fontSize: "0.75rem", color: "#2E7D32" }}>→ {pb.resolution}</div>}
+                  {!pb.resolu && (
+                    <Btn secondary onClick={() => handleResoudre(pb.id)} style={{ marginTop: 4 }}>
+                      <Check size={13} /> Marquer résolu
+                    </Btn>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function Select({ label, value, onChange, options, required }) {
+// ══════════════════════════════════════════════════════════
+// PRÊTS
+// ══════════════════════════════════════════════════════════
+function PretsTab({ prets, equipements, showToast, onRefresh }) {
+  const [showForm, setShowForm]       = useState(false);
+  const [form, setForm]               = useState({ emprunteur_type: "etudiant" });
+  const [filterActif, setFilterActif] = useState("actif");
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const filtered = prets.filter((p) => {
+    if (filterActif === "actif")   return !p.date_retour_effectif;
+    if (filterActif === "retourne") return !!p.date_retour_effectif;
+    return true;
+  });
+
+  const handleCreer = async () => {
+    if (!form.equipement_id || !form.emprunteur || !form.date_pret) {
+      showToast("err", "Équipement, emprunteur et date requis"); return;
+    }
+    try {
+      await apiFetch("/materiel/pret", { method: "POST", body: JSON.stringify(form) });
+      showToast("ok", "Prêt enregistré");
+      setShowForm(false); setForm({ emprunteur_type: "etudiant" }); onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const handleRetour = async (pretId) => {
+    const etatRetour = window.prompt("État de retour ? (bon / endommagé)", "bon");
+    if (etatRetour === null) return;
+    try {
+      await apiFetch(`/materiel/pret/${pretId}/retour`, {
+        method: "PUT", body: JSON.stringify({ etat_retour: etatRetour }),
+      });
+      showToast("ok", "Retour enregistré"); onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const equipsDisponibles = equipements.filter((e) =>
+    e.localisation?.type === "stock" || e.localisation?.type === "lieu"
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-      <label style={{ fontSize: "0.71rem", fontWeight: 800, color: "var(--ip-gray)" }}>
-        {label}
-        {required && " *"}
-      </label>
-      <select style={sx.input} value={value || ""} onChange={(e) => onChange(e.target.value)} required={required}>
-        <option value="">-- Sélectionner --</option>
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
+    <div>
+      <div style={styles.tabHeader}>
+        <div style={styles.filters}>
+          <select style={styles.select} value={filterActif} onChange={(e) => setFilterActif(e.target.value)}>
+            <option value="actif">Prêts en cours</option>
+            <option value="retourne">Retournés</option>
+            <option value="tous">Tous</option>
+          </select>
+          <span style={styles.countPill}>{filtered.length} prêt(s)</span>
+        </div>
+        <Btn primary onClick={() => setShowForm(!showForm)}><Plus size={14} /> Nouveau prêt</Btn>
+      </div>
+
+      {showForm && (
+        <div style={styles.pbForm}>
+          <FSelect label="Équipement *" value={form.equipement_id || ""} onChange={(v) => set("equipement_id", v)}
+            options={equipsDisponibles.map((e) => ({ value: e.id, label: `${e.reference_catalogue} — ${e.designation}` }))} />
+          <FInput label="Emprunteur *" value={form.emprunteur || ""} onChange={(v) => set("emprunteur", v)} />
+          <FSelect label="Type d'emprunteur" value={form.emprunteur_type} onChange={(v) => set("emprunteur_type", v)}
+            options={[{value:"etudiant",label:"Étudiant"},{value:"enseignant",label:"Enseignant"},{value:"personnel",label:"Personnel"}]} />
+          <FInput label="Date du prêt *" type="date" value={form.date_pret || ""} onChange={(v) => set("date_pret", v)} />
+          <FInput label="Retour prévu" type="date" value={form.date_retour_prevu || ""} onChange={(v) => set("date_retour_prevu", v)} />
+          <FTextarea label="Remarques" value={form.remarques || ""} onChange={(v) => set("remarques", v)} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn ghost onClick={() => setShowForm(false)}>Annuler</Btn>
+            <Btn primary onClick={handleCreer}><Check size={13} /> Enregistrer</Btn>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0
+        ? <EmptyState icon={<ArrowUpFromLine size={40} />} title="Aucun prêt" sub="Aucun prêt dans cette catégorie." mini />
+        : (
+          <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead>
+                <tr>{["Équipement","Emprunteur","Type","Date prêt","Retour prévu","Retour effectif",""].map((h) => <th key={h} style={styles.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filtered.map((p) => {
+                  const retardé = !p.date_retour_effectif && p.date_retour_prevu && new Date(p.date_retour_prevu) < new Date();
+                  return (
+                    <tr key={p.id} style={{ ...styles.tr, ...(retardé ? { background: "#FFF8E1" } : {}) }}>
+                      <td style={styles.td}><span style={styles.refTag}>{p.equipement?.reference_catalogue || p.equipement_id?.slice(0,8)}</span></td>
+                      <td style={styles.td}>{p.emprunteur}</td>
+                      <td style={styles.td}><span style={styles.typePill}>{p.emprunteur_type}</span></td>
+                      <td style={styles.td}>{p.date_pret ? new Date(p.date_pret).toLocaleDateString() : "—"}</td>
+                      <td style={styles.td}>
+                        {p.date_retour_prevu ? new Date(p.date_retour_prevu).toLocaleDateString() : "—"}
+                        {retardé && <span style={{ color:"#C62828",fontWeight:700,marginLeft:4 }}> RETARD</span>}
+                      </td>
+                      <td style={styles.td}>
+                        {p.date_retour_effectif
+                          ? <span style={{ color:"#2E7D32",fontWeight:600 }}>✓ {new Date(p.date_retour_effectif).toLocaleDateString()}</span>
+                          : <span style={{ color:"var(--ip-gray)" }}>En cours</span>}
+                      </td>
+                      <td style={styles.td}>
+                        {!p.date_retour_effectif && (
+                          <Btn secondary onClick={() => handleRetour(p.id)} style={{ fontSize:"0.74rem",height:30 }}>
+                            <ArrowDownToLine size={12} /> Retour
+                          </Btn>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// RÉPARATIONS
+// ══════════════════════════════════════════════════════════
+function ReparationsTab({ reparations, equipements, showToast, onRefresh }) {
+  const [showForm, setShowForm]       = useState(false);
+  const [form, setForm]               = useState({});
+  const [filterActif, setFilterActif] = useState("actif");
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const filtered = reparations.filter((r) => {
+    if (filterActif === "actif")   return !r.retour_effectif;
+    if (filterActif === "terminee") return !!r.retour_effectif;
+    return true;
+  });
+
+  const handleCreer = async () => {
+    if (!form.equipement_id || !form.technicien || !form.date_envoi) {
+      showToast("err", "Équipement, technicien et date d'envoi requis"); return;
+    }
+    try {
+      await apiFetch("/materiel/reparation", { method: "POST", body: JSON.stringify(form) });
+      showToast("ok", "Réparation enregistrée");
+      setShowForm(false); setForm({}); onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const handleRetour = async (repId) => {
+    const cout = window.prompt("Coût réel (FCFA) ?", "0");
+    if (cout === null) return;
+    const etat = window.prompt("État après réparation ? (fonctionnel / panne / reforme)", "fonctionnel");
+    if (etat === null) return;
+    try {
+      await apiFetch(`/materiel/reparation/${repId}/retour`, {
+        method: "PUT", body: JSON.stringify({ cout_reel: parseFloat(cout) || 0, etat_apres: etat }),
+      });
+      showToast("ok", "Retour enregistré"); onRefresh();
+    } catch (err) { showToast("err", err.message); }
+  };
+
+  const equipsEnPanne = equipements.filter((e) => e.etat === "panne" || e.etat === "maintenance");
+
+  return (
+    <div>
+      <div style={styles.tabHeader}>
+        <div style={styles.filters}>
+          <select style={styles.select} value={filterActif} onChange={(e) => setFilterActif(e.target.value)}>
+            <option value="actif">En cours</option>
+            <option value="terminee">Terminées</option>
+            <option value="tous">Toutes</option>
+          </select>
+          <span style={styles.countPill}>{filtered.length} réparation(s)</span>
+        </div>
+        <Btn primary onClick={() => setShowForm(!showForm)}><Plus size={14} /> Envoyer en réparation</Btn>
+      </div>
+
+      {showForm && (
+        <div style={styles.pbForm}>
+          <FSelect label="Équipement (en panne/maintenance) *" value={form.equipement_id || ""}
+            onChange={(v) => set("equipement_id", v)}
+            options={equipsEnPanne.map((e) => ({ value: e.id, label: `${e.reference_catalogue} — ${e.designation} (${e.etat})` }))} />
+          <FInput label="Technicien / Atelier *" value={form.technicien || ""} onChange={(v) => set("technicien", v)} />
+          <FInput label="Date d'envoi *" type="date" value={form.date_envoi || ""} onChange={(v) => set("date_envoi", v)} />
+          <FInput label="Retour prévu" type="date" value={form.retour_prevu || ""} onChange={(v) => set("retour_prevu", v)} />
+          <FInput label="Coût estimé (FCFA)" type="number" value={form.cout_estime || ""} onChange={(v) => set("cout_estime", parseFloat(v))} />
+          <FTextarea label="Remarques" value={form.remarques || ""} onChange={(v) => set("remarques", v)} />
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn ghost onClick={() => setShowForm(false)}>Annuler</Btn>
+            <Btn primary onClick={handleCreer}><Check size={13} /> Enregistrer</Btn>
+          </div>
+        </div>
+      )}
+
+      {filtered.length === 0
+        ? <EmptyState icon={<Hammer size={40} />} title="Aucune réparation" sub="Aucune réparation dans cette catégorie." mini />
+        : (
+          <div style={styles.tableWrapper}>
+            <table style={styles.table}>
+              <thead>
+                <tr>{["Équipement","Technicien","Envoyé le","Retour prévu","Coût estimé","Statut",""].map((h) => <th key={h} style={styles.th}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {filtered.map((r) => {
+                  const retardé = !r.retour_effectif && r.retour_prevu && new Date(r.retour_prevu) < new Date();
+                  return (
+                    <tr key={r.id} style={{ ...styles.tr, ...(retardé ? { background: "#FFF8E1" } : {}) }}>
+                      <td style={styles.td}><span style={styles.refTag}>{r.equipement?.reference_catalogue || r.equipement_id?.slice(0,8)}</span></td>
+                      <td style={styles.td}>{r.technicien}</td>
+                      <td style={styles.td}>{r.date_envoi ? new Date(r.date_envoi).toLocaleDateString() : "—"}</td>
+                      <td style={styles.td}>
+                        {r.retour_prevu ? new Date(r.retour_prevu).toLocaleDateString() : "—"}
+                        {retardé && <span style={{ color:"#C62828",fontWeight:700,marginLeft:4 }}> RETARD</span>}
+                      </td>
+                      <td style={styles.td}>{r.cout_estime ? `${Number(r.cout_estime).toLocaleString()} FCFA` : "—"}</td>
+                      <td style={styles.td}>
+                        {r.retour_effectif
+                          ? <span style={{ ...styles.etatBadge, background:"#E8F5E9", color:"#2E7D32" }}>✓ Terminée</span>
+                          : <span style={{ ...styles.etatBadge, background:"#FFF3E0", color:"#E65100" }}>En cours</span>}
+                      </td>
+                      <td style={styles.td}>
+                        {!r.retour_effectif && (
+                          <Btn secondary onClick={() => handleRetour(r.id)} style={{ fontSize:"0.74rem",height:30 }}>
+                            <ArrowDownToLine size={12} /> Retour
+                          </Btn>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// MODAL MANAGER
+// ══════════════════════════════════════════════════════════
+function ModalManager({ type, data, editItem, catalogue, lieux, onClose, onSaved, showToast }) {
+  const [form, setForm] = useState(data || {});
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const urlMap = {
+        catalogue: `catalogue${editItem ? `/${editItem.id}` : ""}`,
+        equipement: `equipement${editItem ? `/${editItem.id}` : ""}`,
+        lieu: `lieu${editItem ? `/${editItem.id}` : ""}`,
+      };
+      await apiFetch(`/materiel/${urlMap[type]}`, {
+        method: editItem ? "PUT" : "POST",
+        body: JSON.stringify(form),
+      });
+      onSaved();
+    } catch (err) { showToast("err", err.message); }
+    finally { setSaving(false); }
+  };
+
+  const titles = {
+    catalogue:  editItem ? "Modifier la référence"   : "Nouvelle référence catalogue",
+    equipement: editItem ? "Modifier l'équipement"   : "Entrée en stock",
+    lieu:       editItem ? "Modifier le lieu"         : "Nouveau lieu",
+  };
+
+  return (
+    <Overlay onClose={onClose}>
+      <ModalBox title={titles[type] || "Formulaire"} onClose={onClose}>
+
+        {type === "catalogue" && (
+          <>
+            <FInput label="Référence *"   value={form.reference || ""}   onChange={(v) => set("reference", v)} required />
+            <FInput label="Désignation *" value={form.designation || ""} onChange={(v) => set("designation", v)} required />
+            <FSelect label="Type *" value={form.type || ""} onChange={(v) => set("type", v)} required
+              options={EQUIPEMENT_TYPES.map((t) => ({ value: t, label: t }))} />
+            <FSelect label="Catégorie" value={form.categorie || "autre"} onChange={(v) => set("categorie", v)}
+              options={[
+                {value:"peripherique",label:"Périphérique"},
+                {value:"composant",label:"Composant"},
+                {value:"reseau",label:"Réseau"},
+                {value:"accessoire",label:"Accessoire"},
+                {value:"autre",label:"Autre"},
+              ]} />
+            <FInput label="Fabricant"          value={form.fabricant || ""}    onChange={(v) => set("fabricant", v)} />
+            <FInput label="Modèle"             value={form.modele || ""}       onChange={(v) => set("modele", v)} />
+            <FInput label="Prix d'achat (FCFA)" type="number" value={form.prix_achat || ""}        onChange={(v) => set("prix_achat", parseFloat(v))} />
+            <FInput label="Stock minimum"       type="number" value={form.quantite_minimale ?? 5}  onChange={(v) => set("quantite_minimale", parseInt(v))} />
+          </>
+        )}
+
+        {type === "equipement" && (
+          <>
+            <FSelect label="Référence catalogue *" value={form.catalogue_id || ""} onChange={(v) => set("catalogue_id", v)} required
+              options={catalogue.map((c) => ({ value: c.id, label: `${c.reference} — ${c.designation}` }))} />
+            <FInput label="Numéro de série" value={form.numero_serie || ""} onChange={(v) => set("numero_serie", v)} placeholder="Vide si gestion par quantité" />
+            <FInput label="Quantité" type="number" value={form.quantite ?? 1} onChange={(v) => set("quantite", parseInt(v))} />
+            <FInput label="Date d'achat" type="date" value={form.date_achat || new Date().toISOString().split("T")[0]} onChange={(v) => set("date_achat", v)} />
+            <FInput label="Fournisseur"        value={form.fournisseur || ""}  onChange={(v) => set("fournisseur", v)} />
+            <FInput label="Prix d'achat (FCFA)" type="number" value={form.prix_achat || ""} onChange={(v) => set("prix_achat", parseFloat(v))} />
+            <FTextarea label="Observations" value={form.observations || ""} onChange={(v) => set("observations", v)} />
+          </>
+        )}
+
+        {type === "lieu" && (
+          <>
+            <FInput label="Nom *" value={form.nom || ""} onChange={(v) => set("nom", v)} required />
+            <FSelect label="Type *" value={form.type || ""} onChange={(v) => set("type", v)} required
+              options={Object.entries(LIEU_TYPE_LABELS).map(([k, v]) => ({ value: k, label: `${v.emoji} ${v.label}` }))} />
+            <FInput label="Capacité (places)" type="number" value={form.capacite || ""} onChange={(v) => set("capacite", parseInt(v))} />
+            <FInput label="Occupant" value={form.occupant || ""} onChange={(v) => set("occupant", v)} />
+          </>
+        )}
+
+        <div style={styles.modalFooter}>
+          <Btn ghost onClick={onClose}>Annuler</Btn>
+          <Btn primary onClick={handleSave} disabled={saving}>
+            <Check size={14} /> {saving ? "Enregistrement…" : "Enregistrer"}
+          </Btn>
+        </div>
+      </ModalBox>
+    </Overlay>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// COMPOSANTS UI RÉUTILISABLES
+// ══════════════════════════════════════════════════════════
+function Overlay({ children, onClose }) {
+  return (
+    <div style={styles.overlay} onMouseDown={onClose}>
+      <div onMouseDown={(e) => e.stopPropagation()}>{children}</div>
+    </div>
+  );
+}
+function ModalBox({ title, onClose, children, wide }) {
+  return (
+    <div style={{ ...styles.modal, ...(wide ? { maxWidth: 820 } : {}) }}>
+      <div style={styles.modalHeader}>
+        <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 800 }}>{title}</h3>
+        <button style={styles.iconBtn} onClick={onClose}><X size={16} /></button>
+      </div>
+      <div style={styles.modalBody}>{children}</div>
+    </div>
+  );
+}
+function Btn({ primary, secondary, ghost, children, onClick, disabled, style }) {
+  return (
+    <button disabled={disabled} onClick={onClick} style={{
+      ...(primary ? styles.btnPrimary : secondary ? styles.btnSecondary : styles.btnGhost),
+      ...(disabled ? { opacity: 0.6, cursor: "not-allowed" } : {}),
+      ...style,
+    }}>{children}</button>
+  );
+}
+function SubTab({ children, active, onClick }) {
+  return <button onClick={onClick} style={{ ...styles.subTabBtn, ...(active ? styles.subTabBtnActive : {}) }}>{children}</button>;
+}
+function KpiCard({ title, value, icon: Icon, color }) {
+  return (
+    <div style={styles.kpiCard}>
+      <div style={{ ...styles.kpiIcon, background: `${color}20`, color }}><Icon size={22} /></div>
+      <div>
+        <div style={{ fontSize: "1.65rem", fontWeight: 900, color }}>{value}</div>
+        <div style={{ fontSize: "0.76rem", color: "var(--ip-gray)", marginTop: 2 }}>{title}</div>
+      </div>
+    </div>
+  );
+}
+function SearchBox({ value, onChange, placeholder }) {
+  return (
+    <div style={styles.searchBox}>
+      <Search size={13} color="var(--ip-gray)" />
+      <input style={styles.searchInput} placeholder={placeholder || "Rechercher…"} value={value}
+        onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+function FInput({ label, type = "text", value, onChange, required, placeholder }) {
+  return (
+    <div style={styles.fRow}>
+      {label && <label style={styles.fLabel}>{label}{required && " *"}</label>}
+      <input type={type} style={styles.fInput} value={value ?? ""}
+        placeholder={placeholder} onChange={(e) => onChange(e.target.value)} required={required} />
+    </div>
+  );
+}
+function FSelect({ label, value, onChange, options, required }) {
+  return (
+    <div style={styles.fRow}>
+      {label && <label style={styles.fLabel}>{label}{required && " *"}</label>}
+      <select style={styles.fInput} value={value ?? ""} onChange={(e) => onChange(e.target.value)} required={required}>
+        <option value="">— Sélectionner —</option>
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>
   );
 }
-
-function Textarea({ label, value, onChange }) {
+function FTextarea({ label, value, onChange }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-      <label style={{ fontSize: "0.71rem", fontWeight: 800, color: "var(--ip-gray)" }}>{label}</label>
-      <textarea
-        style={{ ...sx.input, minHeight: 70 }}
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-      />
+    <div style={styles.fRow}>
+      {label && <label style={styles.fLabel}>{label}</label>}
+      <textarea style={{ ...styles.fInput, minHeight: 72, resize: "vertical" }}
+        value={value ?? ""} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+function EmptyState({ icon, title, sub, mini }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      gap: 12, padding: mini ? "30px 20px" : "56px 20px", color: "var(--ip-gray)", textAlign: "center" }}>
+      {icon}
+      <div style={{ fontWeight: 700, fontSize: mini ? "0.85rem" : "1rem" }}>{title}</div>
+      {sub && <div style={{ fontSize: "0.78rem" }}>{sub}</div>}
+    </div>
+  );
+}
+function Placeholder({ children }) {
+  return <div style={{ padding: 40, textAlign: "center", color: "var(--ip-gray)" }}>{children}</div>;
+}
+function DetailRow({ label, val }) {
+  return (
+    <div style={styles.detailRow}>
+      <span style={styles.detailLabel}>{label}</span>
+      <span style={styles.detailVal}>{val}</span>
     </div>
   );
 }
 
-function TabBtn({ children, active, onClick }) {
-  return (
-    <button onClick={onClick} style={{ ...sx.viewTab, ...(active ? sx.viewTabOn : {}) }}>
-      {children}
-    </button>
-  );
-}
+// ══════════════════════════════════════════════════════════
+// STYLES
+// ══════════════════════════════════════════════════════════
+const styles = {
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(220px, 10%) 1fr",
+    width: "100vw",
+    height: "100vh",
+    background: "#f5f6f8",
+    overflow: "hidden",
+  },
+  left: {
+    height: "100%",
+    overflowY: "auto",
+    background: "var(--bg)",
+    borderRight: "1px solid var(--border)",
+  },
+  right: {
+    display: "flex",
+    flexDirection: "column",
+    minWidth: 0,
+    height: "100%",
+    overflow: "hidden",
+    background: "#f5f6f8",
+  },
+  pageBody: { flex: 1, overflowY: "auto" },
+  container: {
+    maxWidth: "1400px",
+    margin: "1.5rem auto",
+    padding: "0 1.5rem 1.5rem",
+    display: "flex",
+    flexDirection: "column",
+    gap: "1.5rem",
+  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18 },
+  title: { fontSize: "1.5rem", fontWeight: 800, margin: 0 },
+  subtitle: { fontSize: "0.8rem", color: "var(--ip-gray)", marginTop: 4 },
+  refreshBtn: { width: 36, height: 36, border: "1px solid var(--border)", background: "var(--bg)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--ip-gray)" },
 
-function IconBtn({ children, warn, onClick }) {
-  return (
-    <button onClick={onClick} style={{ ...sx.iconBtn, ...(warn ? sx.iconBtnWarn : {}) }}>
-      {children}
-    </button>
-  );
-}
+  tabsBar:      { display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "2px solid var(--border)", paddingBottom: 2, marginBottom: 24 },
+  tabBtn:       { display: "inline-flex", alignItems: "center", gap: 7, padding: "10px 16px", borderRadius: "8px 8px 0 0", border: "none", background: "transparent", cursor: "pointer", fontSize: "0.82rem", fontWeight: 600, color: "var(--ip-gray)", transition: "all 0.15s" },
+  tabBtnActive: { background: "var(--ip-teal)", color: "#fff" },
+  badge:        { background: "#C62828", color: "#fff", borderRadius: 999, fontSize: "0.6rem", fontWeight: 900, padding: "1px 5px", marginLeft: 2 },
 
-// ========== STYLES ==========
-const sx = {
-  root: { display: "grid", gridTemplateColumns: "minmax(220px,10%) 1fr", height: "100vh", background: "var(--bg-muted)", overflow: "hidden" },
-  contentArea: { display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" },
-  body: { display: "grid", gridTemplateColumns: "256px 1fr", flex: 1, minHeight: 0, overflow: "hidden" },
-  sidebar: { borderRight: "1px solid var(--border)", background: "var(--bg)", overflowY: "auto", display: "flex", flexDirection: "column" },
-  sideHeader: { display: "flex", alignItems: "center", gap: 7, fontSize: "0.68rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--ip-gray)", padding: "14px 14px 10px", borderBottom: "1px solid var(--border)" },
-  addSmallBtn: { marginLeft: "auto", background: "none", border: "1px solid var(--border)", borderRadius: 6, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--ip-gray)" },
-  typeBlock: { borderBottom: "1px solid var(--border)" },
-  typeToggle: { width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "none", border: "none", cursor: "pointer", gap: 6 },
-  typeLeft: { display: "flex", alignItems: "center", gap: 6 },
-  typeLabel: { fontSize: "0.7rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--ip-gray)" },
-  typeCount: { fontSize: "0.65rem", fontWeight: 800, color: "var(--ip-gray)", background: "var(--bg-muted)", padding: "1px 6px", borderRadius: 999, border: "1px solid var(--border)" },
-  lieuBtn: { width: "100%", display: "flex", flexDirection: "column", alignItems: "flex-start", padding: "8px 12px 8px 24px", background: "none", border: "none", cursor: "pointer", textAlign: "left", gap: 2, transition: "background 0.15s" },
-  lieuBtnSel: { background: "var(--bg-sidebar-hi)" },
-  lieuName: { fontSize: "0.82rem", fontWeight: 700 },
-  lieuMeta: { fontSize: "0.68rem", color: "var(--ip-gray)" },
-  main: { overflowY: "auto", padding: "1.25rem 1.5rem", background: "var(--bg-muted)" },
-  hint: { fontSize: "0.8rem", color: "var(--ip-gray)", fontStyle: "italic", padding: "10px 0" },
-  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "3rem 2rem", textAlign: "center", background: "var(--bg)", borderRadius: 20, border: "1px solid var(--border)" },
-  emptyIcon: { width: 80, height: 80, borderRadius: "50%", background: "rgba(15,155,114,0.1)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 8 },
-  emptyTitle: { fontSize: "1.1rem", fontWeight: 800 },
-  emptySub: { fontSize: "0.85rem", color: "var(--ip-gray)", maxWidth: 400, lineHeight: 1.6 },
-  emptyMini: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, padding: "2rem", background: "var(--bg)", borderRadius: 16, border: "1px dashed var(--border)", color: "var(--ip-gray)" },
-  classCard: { display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(135deg, var(--bg) 0%, rgba(15,155,114,0.03) 100%)", border: "1px solid var(--border)", borderRadius: 20, padding: "16px 24px", flexWrap: "wrap", marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.02)" },
-  classCardLeft: { flex: 1 },
-  classCardTitle: { fontSize: "1.2rem", fontWeight: 900, color: "var(--fg)" },
-  classCardMeta: { fontSize: "0.8rem", color: "var(--ip-gray)", marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" },
-  tabsRow: { display: "flex", borderBottom: "2px solid var(--border)", gap: 4, marginBottom: 20 },
-  viewTab: { display: "inline-flex", alignItems: "center", gap: 8, height: 42, padding: "0 20px", borderWidth: 0, borderBottomWidth: "2px", borderBottomStyle: "solid", borderBottomColor: "transparent", background: "transparent", cursor: "pointer", fontSize: "0.85rem", fontWeight: 700, color: "var(--ip-gray)", marginBottom: -2, transition: "all 0.2s" },
-  viewTabOn: { borderBottomColor: "var(--ip-teal)", color: "var(--ip-teal)", fontWeight: 800 },
-  btnPrimary: { display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 18px", borderRadius: 40, border: "none", background: "var(--ip-teal)", color: "#fff", fontSize: "0.8rem", fontWeight: 800, cursor: "pointer", transition: "all 0.2s", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" },
-  btnSecondary: { display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 18px", borderRadius: 40, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer", transition: "all 0.2s" },
-  btnGhost: { display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 40, border: "1px solid var(--border)", background: "transparent", color: "var(--fg)", fontSize: "0.75rem", fontWeight: 700, cursor: "pointer" },
-  input: { width: "100%", height: 36, borderRadius: 10, border: "1px solid var(--border)", padding: "0 12px", fontSize: "0.85rem", background: "var(--bg)", color: "var(--fg)", outline: "none", transition: "border 0.2s" },
-  iconBtn: { width: 32, height: 32, borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--ip-gray)", transition: "all 0.15s" },
-  iconBtnWarn: { borderColor: "rgba(255,130,0,.4)", color: "var(--ip-orange)" },
-  toast: { display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 12, fontSize: "0.8rem", fontWeight: 700, marginBottom: 12, position: "fixed", bottom: 20, right: 20, zIndex: 1000, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
-  toastOk: { background: "rgba(48,178,165,0.9)", border: "1px solid var(--ip-teal)", color: "#fff" },
-  toastErr: { background: "rgba(212,24,61,0.9)", border: "1px solid var(--danger)", color: "#fff" },
-  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200, padding: "1rem" },
-};
+  loadingBar:  { height: 3, background: "var(--border)", marginBottom: 8 },
+  loadingFill: { height: "100%", width: "40%", background: "var(--ip-teal)", borderRadius: 999 },
+  content:     { },
 
-const mx = {
-  box: { width: "min(700px, 96vw)", maxHeight: "88vh", background: "var(--bg)", borderRadius: 24, border: "1px solid var(--border)", boxShadow: "0 24px 60px rgba(0,0,0,0.2)", display: "flex", flexDirection: "column", overflow: "hidden" },
-  header: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", padding: "18px 24px 12px", borderBottom: "1px solid var(--border)" },
-  title: { fontSize: "1rem", fontWeight: 900 },
-  close: { border: "1px solid var(--border)", background: "none", width: 32, height: 32, borderRadius: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ip-gray)" },
-  body: { flex: 1, overflowY: "auto", padding: "20px 24px" },
-  footer: { padding: "14px 24px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "flex-end", gap: 10 },
-};
+  tabHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 },
+  filters:   { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" },
 
-const tabStyles = {
-  container: { marginTop: 4 },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  count: { fontSize: "0.8rem", color: "var(--ip-gray)", fontWeight: 700 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 },
-  card: { display: "flex", alignItems: "flex-start", gap: 14, padding: "16px", border: "1px solid var(--border)", borderRadius: 20, background: "var(--bg)", transition: "all 0.2s", boxShadow: "0 1px 3px rgba(0,0,0,0.03)" },
-  cardIcon: { width: 44, height: 44, borderRadius: 14, background: "rgba(15,155,114,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ip-teal)" },
-  cardContent: { flex: 1 },
-  cardTitle: { fontWeight: 800, fontSize: "0.9rem" },
-  cardMeta: { display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" },
-  cardDate: { fontSize: "0.7rem", color: "var(--ip-gray)", marginTop: 4 },
-  typeBadge: { background: "var(--bg-muted)", padding: "2px 8px", borderRadius: 20, fontSize: "0.7rem", fontWeight: 600 },
-  etatBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 20, fontSize: "0.7rem", fontWeight: 600 },
-  cardActions: { display: "flex", gap: 6 },
-  list: { display: "flex", flexDirection: "column", gap: 12 },
-  listItem: { border: "1px solid var(--border)", borderRadius: 16, background: "var(--bg)", overflow: "hidden" },
-  itemMain: { display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", flexWrap: "wrap" },
-  itemIcon: { width: 36, height: 36, borderRadius: 10, background: "rgba(15,155,114,0.08)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ip-teal)" },
-  itemInfo: { flex: 1, minWidth: 150 },
-  itemTitle: { fontWeight: 800, fontSize: "0.9rem" },
-  itemMeta: { fontSize: "0.7rem", color: "var(--ip-gray)", marginTop: 2 },
-  itemActions: { display: "flex", gap: 8, flexWrap: "wrap" },
-  subPanel: { borderTop: "1px solid var(--border)", padding: "14px 18px", background: "var(--bg-muted)" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: "0.75rem", th: { textAlign: "left", padding: "8px", borderBottom: "1px solid var(--border)" }, td: { padding: "8px", borderBottom: "1px solid var(--border)" } },
+  searchBox:   { display: "flex", alignItems: "center", gap: 7, padding: "7px 12px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 8, minWidth: 200 },
+  searchInput: { border: "none", outline: "none", background: "transparent", fontSize: "0.81rem", flex: 1, color: "var(--fg)" },
+  select:      { height: 36, padding: "0 10px", borderRadius: 8, border: "1px solid var(--border)", fontSize: "0.81rem", background: "var(--bg)", color: "var(--fg)", cursor: "pointer" },
+  countPill:   { background: "var(--bg-muted)", border: "1px solid var(--border)", borderRadius: 20, padding: "3px 10px", fontSize: "0.73rem", fontWeight: 700, color: "var(--ip-gray)" },
+
+  btnPrimary:   { display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 18px", borderRadius: 8, border: "none", background: "var(--ip-teal)", color: "#fff", fontSize: "0.82rem", fontWeight: 700, cursor: "pointer" },
+  btnSecondary: { display: "inline-flex", alignItems: "center", gap: 6, height: 36, padding: "0 16px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", fontSize: "0.82rem", fontWeight: 600, cursor: "pointer" },
+  btnGhost:     { display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--ip-gray)", fontSize: "0.78rem", fontWeight: 600, cursor: "pointer" },
+  iconBtn:      { width: 32, height: 32, border: "1px solid var(--border)", background: "var(--bg)", borderRadius: 7, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--ip-gray)" },
+  linkBtn:      { background: "none", border: "none", color: "var(--ip-teal)", fontSize: "0.8rem", fontWeight: 700, cursor: "pointer" },
+  addSmallBtn:  { width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--ip-teal)", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" },
+
+  etatBadge:    { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 6, fontSize: "0.72rem", fontWeight: 600 },
+  typePill:     { background: "var(--bg-muted)", padding: "2px 7px", borderRadius: 6, fontSize: "0.72rem", fontWeight: 600 },
+  refTag:       { background: "rgba(15,155,114,0.12)", color: "var(--ip-teal)", padding: "2px 8px", borderRadius: 6, fontSize: "0.72rem", fontWeight: 700 },
+  locDetail:    { fontSize: "0.72rem", color: "var(--ip-gray)" },
+  problemeBadge:{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 7px", background: "#FFEBEE", color: "#C62828", borderRadius: 6, fontSize: "0.72rem", fontWeight: 700 },
+
+  dashboard:     { display: "flex", flexDirection: "column", gap: 24 },
+  kpiGrid:       { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px,1fr))", gap: 14 },
+  kpiCard:       { display: "flex", alignItems: "center", gap: 14, padding: "18px 20px", background: "var(--bg)", borderRadius: 14, border: "1px solid var(--border)", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" },
+  kpiIcon:       { width: 46, height: 46, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center" },
+  section:       { background: "var(--bg)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" },
+  sectionHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 },
+  sectionTitle:  { display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: "0.92rem", margin: 0 },
+  alerteBandeau: { display: "flex", alignItems: "center", gap: 8, background: "#FFF3E0", border: "1px solid #FFB74D", borderRadius: 8, padding: "8px 14px", fontSize: "0.8rem", fontWeight: 700, color: "#E65100", marginBottom: 14 },
+  alertesList:   { display: "flex", flexDirection: "column", gap: 10 },
+  alerteCard:    { padding: "11px 15px", background: "#FFF8E1", borderRadius: 8, borderLeft: "4px solid #FF9800" },
+  alerteTitle:   { fontWeight: 700, fontSize: "0.84rem" },
+  alerteRef:     { fontSize: "0.74rem", color: "var(--ip-gray)", fontWeight: 400 },
+  alerteMeta:    { fontSize: "0.77rem", color: "var(--ip-gray)", marginTop: 3 },
+  statsGrid:     { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 },
+  statCard:      { background: "var(--bg)", borderRadius: 14, padding: "18px 20px", border: "1px solid var(--border)" },
+  statCardTitle: { fontSize: "0.76rem", fontWeight: 800, color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 14, marginTop: 0 },
+  statBars:      { display: "flex", flexDirection: "column", gap: 12 },
+  statBar:       { display: "flex", alignItems: "center", gap: 12 },
+  statBarLabel:  { width: 110, fontSize: "0.77rem", color: "var(--ip-gray)" },
+  barTrack:      { flex: 1, height: 8, background: "var(--bg-muted)", borderRadius: 999, overflow: "hidden" },
+  barFill:       { height: "100%", borderRadius: 999, transition: "width 0.4s" },
+  statBarVal:    { width: 34, textAlign: "right", fontSize: "0.77rem", fontWeight: 700 },
+
+  catGrid:       { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 16 },
+  catCard:       { background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 14, padding: "16px", display: "flex", flexDirection: "column", gap: 6 },
+  catCardAlerte: { borderColor: "#FFB74D", background: "#FFFDE7" },
+  catCardTop:    { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  catType:       { background: "rgba(15,155,114,0.12)", color: "var(--ip-teal)", padding: "2px 9px", borderRadius: 6, fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase" },
+  catBrand:      { fontSize: "0.7rem", color: "var(--ip-gray)", fontWeight: 700, textTransform: "uppercase" },
+  catName:       { fontSize: "0.98rem", fontWeight: 800 },
+  catRef:        { fontSize: "0.71rem", color: "var(--ip-gray)" },
+  catMeta:       { fontSize: "0.71rem", color: "var(--ip-gray)" },
+  catPrix:       { fontSize: "0.84rem", fontWeight: 700, color: "var(--ip-teal)" },
+  catStockRow:   { display: "flex", gap: 4, background: "var(--bg-muted)", borderRadius: 8, padding: "10px", marginTop: 4 },
+  catStockCell:  { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 },
+  catStockLabel: { fontSize: "0.64rem", color: "var(--ip-gray)", fontWeight: 600, textTransform: "uppercase" },
+  catStockVal:   { fontSize: "1.1rem", fontWeight: 900 },
+  catAlertBanner:{ background: "#FFF3E0", color: "#E65100", fontSize: "0.71rem", fontWeight: 700, padding: "5px 10px", borderRadius: 6 },
+
+  tableWrapper: { background: "var(--bg)", borderRadius: 14, overflow: "hidden", border: "1px solid var(--border)" },
+  table:  { width: "100%", borderCollapse: "collapse", fontSize: "0.81rem" },
+  th:     { textAlign: "left", padding: "11px 14px", borderBottom: "2px solid var(--border)", fontWeight: 800, fontSize: "0.72rem", color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.04em", whiteSpace: "nowrap", background: "var(--bg-muted)" },
+  tr:     { transition: "background 0.12s" },
+  td:     { padding: "10px 14px", borderBottom: "1px solid var(--border)", verticalAlign: "middle" },
+
+  lieuxLayout:    { display: "grid", gridTemplateColumns: "265px 1fr", gap: 20, minHeight: 500 },
+  lieuxSidebar:   { background: "var(--bg)", borderRadius: 14, padding: 16, border: "1px solid var(--border)", overflowY: "auto", maxHeight: 680 },
+  sidebarHeader:  { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, paddingBottom: 10, borderBottom: "1px solid var(--border)" },
+  sidebarTitle:   { fontWeight: 800, fontSize: "0.84rem" },
+  lieuGroup:      { marginBottom: 16 },
+  lieuGroupTitle: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.69rem", fontWeight: 800, color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, padding: "0 4px" },
+  lieuCount:      { background: "var(--bg-muted)", border: "1px solid var(--border)", padding: "1px 6px", borderRadius: 10, fontSize: "0.64rem" },
+  lieuBtn:        { width: "100%", textAlign: "left", padding: "9px 12px", borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", marginBottom: 3, transition: "background 0.12s" },
+  lieuBtnActive:  { background: "rgba(15,155,114,0.1)", borderLeft: "3px solid var(--ip-teal)", paddingLeft: 9 },
+  lieuBtnName:    { fontSize: "0.83rem", fontWeight: 700 },
+  lieuBtnMeta:    { fontSize: "0.68rem", color: "var(--ip-gray)", marginTop: 2 },
+  lieuxContent:   { background: "var(--bg)", borderRadius: 14, padding: 20, border: "1px solid var(--border)" },
+  lieuHeader:     { display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14, marginBottom: 18, paddingBottom: 16, borderBottom: "1px solid var(--border)" },
+  lieuTitle:      { fontSize: "1.2rem", fontWeight: 900, margin: 0 },
+  lieuSubtitle:   { fontSize: "0.77rem", color: "var(--ip-gray)", marginTop: 4 },
+  lieuStats:      { display: "flex", gap: 24 },
+  subTabs:        { display: "flex", gap: 6, marginBottom: 18, borderBottom: "1px solid var(--border)", paddingBottom: 6 },
+  subTabBtn:      { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 7, border: "none", background: "transparent", cursor: "pointer", fontSize: "0.79rem", color: "var(--ip-gray)", fontWeight: 600 },
+  subTabBtnActive:{ background: "rgba(15,155,114,0.1)", color: "var(--ip-teal)" },
+  equipsGrid:     { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(185px,1fr))", gap: 12 },
+  equipCard:      { padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 10, display: "flex", flexDirection: "column", gap: 5 },
+  equipCardPb:    { borderColor: "rgba(198,40,40,0.5)", background: "rgba(255,235,238,0.15)" },
+  equipDesignation:{ fontSize: "0.81rem", fontWeight: 700 },
+  equipMeta:      { fontSize: "0.69rem", color: "var(--ip-gray)" },
+  postesGrid:     { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(225px,1fr))", gap: 14 },
+  posteCard:      { padding: "14px 16px", border: "1px solid var(--border)", borderRadius: 12, display: "flex", flexDirection: "column", gap: 10 },
+  posteIncomplet: { borderColor: "#C62828", background: "#FFEBEE" },
+  posteHeader:    { display: "flex", alignItems: "center", gap: 8 },
+  posteName:      { fontWeight: 700, flex: 1, fontSize: "0.87rem" },
+  posteCompo:     { display: "flex", flexDirection: "column", gap: 4 },
+  compRow:        { display: "flex", justifyContent: "space-between", fontSize: "0.73rem" },
+  compType:       { color: "var(--ip-gray)" },
+  compEtat:       { fontWeight: 600 },
+  posteManquants: { fontSize: "0.7rem", color: "#C62828", fontWeight: 600 },
+
+  mvtPage:           { maxWidth: 620 },
+  mvtTypes:          { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 22 },
+  mvtTypeCard:       { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "20px 16px", border: "2px solid var(--border)", borderRadius: 14, background: "var(--bg)", cursor: "pointer", textAlign: "center" },
+  mvtTypeCardActive: { borderColor: "var(--ip-teal)", background: "rgba(15,155,114,0.06)" },
+  mvtForm:           { background: "var(--bg)", padding: 22, borderRadius: 14, border: "1px solid var(--border)" },
+
+  pbForm:    { background: "var(--bg)", padding: "16px 20px", borderRadius: 12, border: "1px solid var(--border)", marginBottom: 20 },
+  pbFormRow: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
+  pbItem:    { padding: "12px 14px", background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 10, borderLeft: "4px solid #E65100", display: "flex", flexDirection: "column", gap: 6 },
+  pbResolu:  { borderLeftColor: "#4CAF50", opacity: 0.72 },
+  pbDesc:    { fontSize: "0.8rem" },
+  pbMeta:    { fontSize: "0.7rem", color: "var(--ip-gray)" },
+
+  detailGrid:    { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 20 },
+  detailRow:     { display: "flex", flexDirection: "column", padding: "8px 12px", background: "var(--bg-muted)", borderRadius: 8 },
+  detailLabel:   { fontSize: "0.67rem", fontWeight: 800, color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.04em" },
+  detailVal:     { fontSize: "0.84rem", fontWeight: 600, marginTop: 2 },
+  detailSection: { fontSize: "0.76rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--ip-gray)", borderBottom: "1px solid var(--border)", paddingBottom: 8, marginBottom: 14 },
+
+  fRow:   { display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 },
+  fLabel: { fontSize: "0.71rem", fontWeight: 800, color: "var(--ip-gray)", textTransform: "uppercase", letterSpacing: "0.04em" },
+  fInput: { height: 36, border: "1px solid var(--border)", borderRadius: 8, padding: "0 12px", fontSize: "0.83rem", background: "var(--bg)", color: "var(--fg)", outline: "none", width: "100%", boxSizing: "border-box" },
+
+  overlay:     { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300, padding: 20 },
+  modal:       { background: "var(--bg)", borderRadius: 18, width: "100%", maxWidth: 540, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.18)", border: "1px solid var(--border)" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid var(--border)" },
+  modalBody:   { padding: "18px 20px" },
+  modalFooter: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 },
+
+  toast:   { position: "fixed", bottom: 22, right: 22, display: "flex", alignItems: "center", gap: 8, padding: "11px 18px", borderRadius: 10, fontWeight: 700, fontSize: "0.82rem", color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.18)", zIndex: 500 },
+  toastOk: { background: "#2E7D32" },
+  toastErr:{ background: "#C62828" },
+
+  hint: { fontSize: "0.79rem", color: "var(--ip-gray)", fontStyle: "italic" },
 };

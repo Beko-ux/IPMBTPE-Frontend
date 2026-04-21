@@ -1,19 +1,48 @@
-// src/components/HorizontalNavBar.jsx
-// ✅ Étape 2 — Topbar avec sélecteur d'année académique intégré
-
+// src/components/HorizontalNavBar.jsx (inchangé, déjà complet avec avatarUrl)
 import { Menu, LayoutGrid, FileText, Shield, ClipboardList } from "lucide-react";
 import { colors } from "../styles/theme";
 import AcademicYearSelector from "./AcademicYearSelector";
+import useAuthStore from "../store/useAuthStore";
 
 export default function HorizontalNavBar({
   title = "Scolarité",
   subtitle = "—",
-  userName = "Gestionnaire",
-  userRole = "Admin système",
-  avatarText = "GI",
   onMenu,
+  onNavigate,
   actions = [],
 }) {
+  const { user, role } = useAuthStore();
+
+  const displayName = user?.displayName || user?.email?.split('@')[0] || "Utilisateur";
+  const avatarUrl = user?.photoURL;
+
+  const roleLabels = {
+    super_admin: "Super Admin",
+    gestionnaire: "Gestionnaire",
+    cellule_informatique: "Cellule Info.",
+    secretaire: "Secrétaire",
+    directeur: "Directeur",
+    promoteur: "Promoteur",
+    promotrice: "Promotrice",
+    agents_securite: "Agent sécurité",
+    censeur: "Censeur",
+    enseignant: "Enseignant",
+  };
+  const userRole = roleLabels[role] || role || "Utilisateur";
+
+  const getInitials = () => {
+    if (!displayName) return "?";
+    const parts = displayName.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return displayName.slice(0, 2).toUpperCase();
+  };
+
+  const handleProfileClick = () => {
+    if (onNavigate) onNavigate("profile");
+  };
+
   return (
     <header style={styles.topbar}>
       <div style={styles.left}>
@@ -49,19 +78,44 @@ export default function HorizontalNavBar({
       </div>
 
       <div style={styles.right}>
-        <div style={styles.userMeta}>
-          <p style={styles.userName}>{userName}</p>
-          <p style={styles.userRole}>{userRole}</p>
-        </div>
-        <div style={styles.avatar}>{avatarText}</div>
+        <button
+          onClick={handleProfileClick}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+          }}
+        >
+          <div style={styles.userMeta}>
+            <p style={styles.userName}>{displayName}</p>
+            <p style={styles.userRole}>{userRole}</p>
+          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Avatar"
+              style={{
+                width: "2.35rem",
+                height: "2.35rem",
+                borderRadius: "9999px",
+                objectFit: "cover",
+                boxShadow: "0 10px 24px rgba(0,184,156,0.25)",
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <div style={styles.avatar}>{getInitials()}</div>
+          )}
+        </button>
       </div>
     </header>
   );
 }
 
-/**
- * ✅ Compat — réexporté pour ne pas casser AnonymatsPage, NotesPage, etc.
- */
 export const TopbarIcons = {
   Dashboard: LayoutGrid,
   Notes: FileText,
